@@ -2,20 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Terreno Pi con Campo Dinámico y Joysticks</title>
+  <title>Terreno Pi con Campo Dinámico y Joysticks Móvil</title>
   <style>
     body { margin: 0; overflow: hidden; background: #87CEEB; }
     canvas { display: block; touch-action: none; }
 
+    /* Joysticks */
     .joystick {
       position: fixed;
       width: 25vw;
       height: 25vw;
-      max-width: 150px;
-      max-height: 150px;
       border-radius: 50%;
       background: rgba(255, 255, 255, 0.05);
-      border: 2px solid rgba(255,255,255,0.2);
+      border: 0.5vh solid rgba(255,255,255,0.2);
       touch-action: none;
       z-index: 10;
     }
@@ -32,16 +31,16 @@
     #joystick-left { bottom: 10vh; left: 5vw; }
     #joystick-right { bottom: 10vh; right: 5vw; }
 
+    /* Zoom slider */
     #zoom-slider {
       position: fixed;
       left: 50%;
       bottom: 10vh;
       width: 8vw;
-      height: 25vw;
-      max-height: 150px;
+      height: 25vh;
       background: rgba(255, 255, 255, 0.05);
-      border: 2px solid rgba(255,255,255,0.2);
-      border-radius: 10px;
+      border: 0.5vh solid rgba(255,255,255,0.2);
+      border-radius: 1vh;
       transform: translateX(-50%);
       z-index: 10;
     }
@@ -50,7 +49,7 @@
       width: 100%;
       height: 20%;
       background: rgba(255,255,255,0.3);
-      border-radius: 10px;
+      border-radius: 1vh;
       top: 50%;
       transform: translateY(-50%);
     }
@@ -69,7 +68,7 @@ window.addEventListener("load", () => {
   scene.fog = new THREE.FogExp2(0x87ceeb, 0.0005);
 
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
-  camera.position.set(0, 250, 0);
+  camera.position.set(0, window.innerHeight * 0.25 / 10, 0); // altura relativa
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -96,13 +95,15 @@ window.addEventListener("load", () => {
   const terrain = new THREE.Mesh(geometry, material);
   scene.add(terrain);
 
-  let offsetX = 0, offsetZ = 0, offsetY = 250;
+  let offsetX = 0, offsetZ = 0, offsetY = window.innerHeight * 0.25 / 10;
   let pitch = 0, yaw = 0;
 
-  // Velocidades
-  const SPEED = 300, VERTICAL_SPEED = 150, ROT_SPEED = 0.015;
+  // Velocidades relativas a pantalla
+  const SPEED = 0.5 * (window.innerHeight / 100); 
+  const VERTICAL_SPEED = 0.3 * (window.innerHeight / 100);
+  const ROT_SPEED = 0.015;
 
-  // Funciones de altura (idénticas a tu código original) --------------------
+  /* ===================== FUNCIONES TERRENO ===================== */
   function piBasedAccident(x, z) {
     const scale = 100;
     const range = 2;
@@ -216,12 +217,9 @@ window.addEventListener("load", () => {
     colorAttr.needsUpdate = true;
     geometry.computeVertexNormals();
   }
-  material.roughness = 0.95;
-  material.metalness = 0.05;
 
-  // ---------------- Joystick System -----------------
+  /* ===================== JOYSTICKS ===================== */
   let leftJoystick = {x:0, y:0}, rightJoystick = {x:0, y:0}, zoomDelta = 0;
-
   function setupJoystick(id, onMove) {
     const el = document.getElementById(id);
     const thumb = el.querySelector('.thumb');
@@ -241,7 +239,7 @@ window.addEventListener("load", () => {
       if (!touch) return;
       const dx = touch.clientX - origin.x;
       const dy = touch.clientY - origin.y;
-      const val = {x: dx / 60, y: -dy / 60};
+      const val = {x: dx / (window.innerWidth * 0.1), y: -dy / (window.innerHeight * 0.1)};
       onMove(val);
       thumb.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
     }, {passive: false});
@@ -272,8 +270,8 @@ window.addEventListener("load", () => {
     const touch = [...e.touches].find(t => t.identifier === zoomActiveTouchId);
     if (!touch) return;
     const dy = touch.clientY - zoomOriginY;
-    zoomDelta = -dy / 100;
-    zoomThumb.style.top = `${50 + dy}px`;
+    zoomDelta = -dy / (window.innerHeight * 0.05);
+    zoomThumb.style.top = `${50 + dy * 100 / window.innerHeight}%`;
   });
   zoomSlider.addEventListener('touchend', e => {
     if (zoomActiveTouchId === null) return;
@@ -284,12 +282,12 @@ window.addEventListener("load", () => {
     zoomActiveTouchId = null;
   });
 
+  /* ===================== ANIMACIÓN ===================== */
   function animate() {
     requestAnimationFrame(animate);
 
-    // Movimiento con joysticks
-    offsetX += leftJoystick.x * SPEED * 0.016;
-    offsetY += leftJoystick.y * VERTICAL_SPEED * 0.016;
+    offsetX += leftJoystick.x * SPEED;
+    offsetY += leftJoystick.y * VERTICAL_SPEED;
     offsetY = Math.max(2, offsetY);
 
     yaw   -= rightJoystick.x * ROT_SPEED;
@@ -302,8 +300,8 @@ window.addEventListener("load", () => {
         Math.sin(pitch),
         Math.cos(pitch)*Math.cos(yaw)
       );
-      offsetX += dir.x * zoomDelta * SPEED * 0.016;
-      offsetZ += dir.z * zoomDelta * SPEED * 0.016;
+      offsetX += dir.x * zoomDelta * SPEED;
+      offsetZ += dir.z * zoomDelta * SPEED;
     }
 
     updateTerrainGeometry(true);
