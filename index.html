@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Terreno Pi con Campo Dinámico y Joysticks</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #87CEEB; }
+    canvas { display: block; touch-action: none; }
+
+    .joystick {
+      position: fixed;
+      width: 25vw;
+      height: 25vw;
+      max-width: 150px;
+      max-height: 150px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 2px solid rgba(255,255,255,0.2);
+      touch-action: none;
+      z-index: 10;
+    }
+    .thumb {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 40%;
+      height: 40%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: rgba(255,255,255,0.3);
+    }
+    #joystick-left { bottom: 10vh; left: 5vw; }
+    #joystick-right { bottom: 10vh; right: 5vw; }
+
+    #zoom-slider {
+      position: fixed;
+      left: 50%;
+      bottom: 10vh;
+      width: 8vw;
+      height: 25vw;
+      max-height: 150px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 2px solid rgba(255,255,255,0.2);
+      border-radius: 10px;
+      transform: translateX(-50%);
+      z-index: 10;
+    }
+    #zoom-thumb {
+      position: absolute;
+      width: 100%;
+      height: 20%;
+      background: rgba(255,255,255,0.3);
+      border-radius: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+  </style>
+</head>
+<body>
+<div id="joystick-left" class="joystick"><div class="thumb"></div></div>
+<div id="joystick-right" class="joystick"><div class="thumb"></div></div>
+<div id="zoom-slider"><div id="zoom-thumb"></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
+<script>
+window.addEventListener("load", () => {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x87ceeb);
+  scene.fog = new THREE.FogExp2(0x87ceeb, 0.0005);
+
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
+  camera.position.set(0, 250, 0);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const light = new THREE.DirectionalLight(0xffffff, 1.5);
+  light.position.set(50, 100, 50);
+  scene.add(light);
+  scene.add(new THREE.AmbientLight(0x888888));
+
+  const SIZE = 2000;
+  const SEGMENTS = 200;
+  const geometry = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS);
+  geometry.rotateX(-Math.PI / 2);
+
+  const colorArray = new Float32Array(geometry.attributes.position.count * 3);
+  geometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    flatShading: false
+  });
+
+  const terrain = new THREE.Mesh(geometry, material);
+  scene.add(terrain);
+
+  let offsetX = 0, offsetZ = 0, offsetY = 250;
+  let pitch = 0, yaw = 0;
+
+  // Velocidades
+  const SPEED = 300, VERTICAL_SPEED = 150, ROT_SPEED = 0.015;
+
+  // Funciones de altura (idénticas a tu código original) --------------------
+  function piBasedAccident(x, z) {
+    const scale = 100;
+    const range = 2;
+    let h = 0;
+    const piDigits = ("14159265358979323846264338327950288419716939937510" +
+                      "58209749445923078164062862089986280348253421170679" +
+                      "82148086513282306647093844609550582231725359408128" +
+                      "48111745028410270193852110555964462294895493038196").split('');
+    const ix = Math.floor(x / scale);
+    const iz = Math.floor(z / scale);
+    for (let dx = -range; dx <= range; dx++) {
+      for (let dz = -range; dz <= range; dz++) {
+        const cx = ix + dx;
+        const cz = iz + dz;
+        const index = Math.abs((cx * 73856093 ^ cz * 19349663) % piDigits.length);
+        const digit1 = parseInt(piDigits[index % piDigits.length]) || 1;
+        const digit2 = parseInt(piDigits[(index + 1) % piDigits.length]) || 1;
+        const centerX = cx * scale;
+        const centerZ = cz * scale;
+        const dx2 = x - centerX;
+        const dz2 = z - centerZ;
+        const distSq = dx2*dx2 + dz2*dz2;
+        const type = (digit1 + digit2) % 5;
+        const height = 40 + (digit1 % 5) * 11;
+        const radius = 4 + (digit2 % 6) * 50;
+        if (distSq < radius * radius) {
+          let strength = 0;
+          switch (type) {
+            case 0: strength =  height * Math.exp(-distSq/(radius*2)); break;
+            case 1: strength = -height * Math.exp(-distSq/(radius*2)); break;
+            case 2: strength = distSq < radius*radius*0.5 ? height : 0; break;
+            case 3: strength =  height * Math.exp(-distSq/1); break;
+          }
+          h += strength;
+        }
+      }
+    }
+    return h;
+  }
+  function curvature(x, z) {
+    const radius = SIZE/2;
+    const d = Math.sqrt((x/radius)**2 + (z/radius)**2);
+    return -d*d*8;
+  }
+  function fineWaves(x, z, t=0) {
+    return Math.sin((x+offsetX + t*10)*0.08)*2 +
+           Math.cos((z+offsetZ + t*10)*0.1)*1.5;
+  }
+  function waveField3D(x, y, z, t) {
+    const kx = 0.1, ky = 0.1, kxy = 0.001, kz = 0.05;
+    const omega1 = 0.5, omega2 = 0.8, omega3 = 0.2, omega4 = 0.3;
+    return Math.sin(kx*x + omega1*t)
+         + Math.cos(ky*y + omega2*t)
+         + Math.sin(kxy*x*y + omega3*t)
+         + Math.sin(kz*z + omega4*t);
+  }
+  let heightMap = null, hmWidth = 0, hmHeight = 0;
+  function getHeightMapValue(x, z) {
+    if (!heightMap) return 0;
+    const ix = Math.floor(((x + SIZE/2) / SIZE) * (hmWidth - 1));
+    const iz = Math.floor(((z + SIZE/2) / SIZE) * (hmHeight - 1));
+    const cx = Math.min(Math.max(ix, 0), hmWidth -1);
+    const cz = Math.min(Math.max(iz, 0), hmHeight -1);
+    return heightMap[cz][cx] * 30;
+  }
+  let accumulatedTime = 0;
+  function getHeight(x, z, t=0) {
+    const baseHeight = getHeightMapValue(x+offsetX, z+offsetZ);
+    const acc = piBasedAccident(x+offsetX, z+offsetZ);
+    const curv = curvature(x, z);
+    const waves = fineWaves(x, z, t);
+    const field = waveField3D(x, 0, z, t);
+    return baseHeight + acc + curv + waves + field * 2.5;
+  }
+  function updateTerrainGeometry(isMoving) {
+    const posAttr = geometry.attributes.position;
+    const colorAttr = geometry.attributes.color;
+    if (isMoving) accumulatedTime += 0.016;
+    const minHeight = -50, maxHeight = 80;
+    const lowColor = new THREE.Color(0x1b3b5f);
+    const midColor = new THREE.Color(0x4d8f4b);
+    const highColor = new THREE.Color(0x4d8f4b);
+    const peakColor = new THREE.Color(0x888888);
+    const c1 = new THREE.Color();
+    const c2 = new THREE.Color();
+    for (let i = 0; i < posAttr.count; i++) {
+      const x = posAttr.getX(i);
+      const z = posAttr.getZ(i);
+      const y = getHeight(x, z, accumulatedTime);
+      posAttr.setY(i, y);
+      let hNorm = (y - minHeight) / (maxHeight - minHeight);
+      hNorm = Math.min(Math.max(hNorm, 0), 1);
+      let finalColor;
+      if (hNorm < 0.3) {
+        c1.copy(lowColor);
+        c2.copy(midColor);
+        finalColor = c1.lerp(c2, hNorm / 0.3);
+      } else if (hNorm < 0.6) {
+        c1.copy(midColor);
+        c2.copy(highColor);
+        finalColor = c1.lerp(c2, (hNorm - 0.3) / 0.3);
+      } else {
+        c1.copy(highColor);
+        c2.copy(peakColor);
+        finalColor = c1.lerp(c2, (hNorm - 0.6) / 0.4);
+      }
+      finalColor.offsetHSL(0, (Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.02);
+      colorAttr.setXYZ(i, finalColor.r, finalColor.g, finalColor.b);
+    }
+    posAttr.needsUpdate = true;
+    colorAttr.needsUpdate = true;
+    geometry.computeVertexNormals();
+  }
+  material.roughness = 0.95;
+  material.metalness = 0.05;
+
+  // ---------------- Joystick System -----------------
+  let leftJoystick = {x:0, y:0}, rightJoystick = {x:0, y:0}, zoomDelta = 0;
+
+  function setupJoystick(id, onMove) {
+    const el = document.getElementById(id);
+    const thumb = el.querySelector('.thumb');
+    let origin = {x:0, y:0};
+    let active = false;
+    let activeTouchId = null;
+    el.addEventListener('touchstart', e => {
+      if (active) return;
+      const t = e.changedTouches[0];
+      activeTouchId = t.identifier;
+      origin = {x: t.clientX, y: t.clientY};
+      active = true;
+    }, {passive: false});
+    el.addEventListener('touchmove', e => {
+      if (!active) return;
+      const touch = [...e.touches].find(t => t.identifier === activeTouchId);
+      if (!touch) return;
+      const dx = touch.clientX - origin.x;
+      const dy = touch.clientY - origin.y;
+      const val = {x: dx / 60, y: -dy / 60};
+      onMove(val);
+      thumb.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    }, {passive: false});
+    el.addEventListener('touchend', e => {
+      if (!active) return;
+      const endedTouch = [...e.changedTouches].find(t => t.identifier === activeTouchId);
+      if (!endedTouch) return;
+      onMove({x:0, y:0});
+      thumb.style.transform = 'translate(-50%, -50%)';
+      active = false;
+      activeTouchId = null;
+    }, {passive: false});
+  }
+  setupJoystick('joystick-left', val => leftJoystick = val);
+  setupJoystick('joystick-right', val => rightJoystick = val);
+
+  const zoomThumb = document.getElementById('zoom-thumb');
+  const zoomSlider = document.getElementById('zoom-slider');
+  let zoomOriginY = 0, zoomActiveTouchId = null;
+  zoomSlider.addEventListener('touchstart', e => {
+    if (zoomActiveTouchId !== null) return;
+    const t = e.changedTouches[0];
+    zoomActiveTouchId = t.identifier;
+    zoomOriginY = t.clientY;
+  });
+  zoomSlider.addEventListener('touchmove', e => {
+    if (zoomActiveTouchId === null) return;
+    const touch = [...e.touches].find(t => t.identifier === zoomActiveTouchId);
+    if (!touch) return;
+    const dy = touch.clientY - zoomOriginY;
+    zoomDelta = -dy / 100;
+    zoomThumb.style.top = `${50 + dy}px`;
+  });
+  zoomSlider.addEventListener('touchend', e => {
+    if (zoomActiveTouchId === null) return;
+    const endedTouch = [...e.changedTouches].find(t => t.identifier === zoomActiveTouchId);
+    if (!endedTouch) return;
+    zoomDelta = 0;
+    zoomThumb.style.top = '50%';
+    zoomActiveTouchId = null;
+  });
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    // Movimiento con joysticks
+    offsetX += leftJoystick.x * SPEED * 0.016;
+    offsetY += leftJoystick.y * VERTICAL_SPEED * 0.016;
+    offsetY = Math.max(2, offsetY);
+
+    yaw   -= rightJoystick.x * ROT_SPEED;
+    pitch += rightJoystick.y * ROT_SPEED;
+    pitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, pitch));
+
+    if (zoomDelta !== 0) {
+      const dir = new THREE.Vector3(
+        Math.cos(pitch)*Math.sin(yaw),
+        Math.sin(pitch),
+        Math.cos(pitch)*Math.cos(yaw)
+      );
+      offsetX += dir.x * zoomDelta * SPEED * 0.016;
+      offsetZ += dir.z * zoomDelta * SPEED * 0.016;
+    }
+
+    updateTerrainGeometry(true);
+
+    camera.position.set(0, offsetY, 0);
+    const dir = new THREE.Vector3(
+      Math.cos(pitch)*Math.sin(yaw),
+      Math.sin(pitch),
+      Math.cos(pitch)*Math.cos(yaw)
+    );
+    camera.lookAt(camera.position.clone().add(dir));
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+});
+</script>
+</body>
+</html>
