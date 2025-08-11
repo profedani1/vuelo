@@ -1,330 +1,561 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <title>Terreno Pi con Campo Dinámico y Joysticks Móvil</title>
-  <style>
-    body { margin: 0; overflow: hidden; background: #87CEEB; }
-    canvas { display: block; touch-action: none; }
-
-    /* Joysticks */
-    .joystick {
-      position: fixed;
-      width: 25vw;
-      height: 25vw;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.05);
-      border: 0.5vh solid rgba(255,255,255,0.2);
-      touch-action: none;
-      z-index: 10;
-    }
-    .thumb {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      width: 40%;
-      height: 40%;
-      transform: translate(-50%, -50%);
-      border-radius: 50%;
-      background: rgba(255,255,255,0.3);
-    }
-    #joystick-left { bottom: 10vh; left: 5vw; }
-    #joystick-right { bottom: 10vh; right: 5vw; }
-
-    /* Zoom slider */
-    #zoom-slider {
-      position: fixed;
-      left: 50%;
-      bottom: 10vh;
-      width: 8vw;
-      height: 25vh;
-      background: rgba(255, 255, 255, 0.05);
-      border: 0.5vh solid rgba(255,255,255,0.2);
-      border-radius: 1vh;
-      transform: translateX(-50%);
-      z-index: 10;
-    }
-    #zoom-thumb {
-      position: absolute;
-      width: 100%;
-      height: 20%;
-      background: rgba(255,255,255,0.3);
-      border-radius: 1vh;
-      top: 50%;
-      transform: translateY(-50%);
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Protótipo Automático: Espiral Acoplada con Alertas</title>
+<style>
+  :root {
+    --bg:#0f1724;
+    --card:#0b1220;
+    --accent:#7dd3fc;
+    --alert:#f87171;
+    --muted:#94a3b8;
+  }
+  html,body {
+    height:100%;
+    margin:0;
+    font-family:Inter,system-ui,Segoe UI,Arial;
+    background:var(--bg);
+    color:#e6eef6;
+  }
+  .app {
+    display:grid;
+    grid-template-columns:420px 1fr;
+    gap:18px;
+    height:100vh;
+    padding:18px;
+  }
+  .panel {
+    background:linear-gradient(180deg,#071023 0%, #071229 60%);
+    border-radius:12px;
+    padding:14px;
+    box-shadow:0 6px 18px rgba(2,6,23,.6);
+    overflow:auto;
+    display:flex;
+    flex-direction: column;
+  }
+  h1 {
+    font-size:18px;
+    margin:0 0 8px;
+  }
+  label {
+    display:block;
+    margin-top:8px;
+    font-size:13px;
+    color:var(--muted);
+  }
+  .row {
+    display:flex;
+    gap:8px;
+    align-items:center;
+    flex-wrap: wrap;
+  }
+  input[type=range] {
+    width:100%;
+  }
+  button {
+    background:var(--accent);
+    border:none;
+    color:#042031;
+    padding:8px 10px;
+    border-radius:8px;
+    cursor:pointer;
+    user-select:none;
+  }
+  button:disabled {
+    background:#374151;
+    cursor: not-allowed;
+  }
+  .small {
+    font-size:12px;
+    color:var(--muted);
+  }
+  canvas {
+    width:100%;
+    height:100%;
+    display:block;
+    background:linear-gradient(180deg,#071226, #001525);
+    border-radius:12px;
+  }
+  .stats {
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:8px;
+  }
+  .stat {
+    background:#02111a;
+    padding:8px;
+    border-radius:8px;
+    font-size:13px;
+    min-width:120px;
+  }
+  #alertLog {
+    margin-top:10px;
+    background:#1a1f2d;
+    border-radius:8px;
+    padding:8px;
+    height:120px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size:12px;
+    color:var(--alert);
+    user-select: text;
+  }
+  footer {
+    font-size:12px;
+    color:var(--muted);
+    margin-top:12px;
+  }
+  .flex-grow {
+    flex-grow: 1;
+  }
+</style>
 </head>
 <body>
-<div id="joystick-left" class="joystick"><div class="thumb"></div></div>
-<div id="joystick-right" class="joystick"><div class="thumb"></div></div>
-<div id="zoom-slider"><div id="zoom-thumb"></div></div>
+<div class="app">
+  <div class="panel" style="max-height:calc(100vh - 36px);">
+    <h1>Protótipo Automático: Espiral Acoplada con Alertas</h1>
+    <div class="small">Este prototipo ejecuta simulaciones automáticas barriendo parámetros, detecta eventos interesantes y genera alertas para análisis científico.</div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
+    <label>Parámetros fijos</label>
+    <div class="row">
+      <label style="flex-basis: 100%;">N nodos (resolución)</label>
+      <input id="N" type="range" min="64" max="512" step="32" value="256" />
+      <div id="Nval" class="small">256</div>
+    </div>
+
+    <label>Exploración automática</label>
+    <div class="row" style="gap:6px; flex-wrap: nowrap;">
+      <button id="btnStartAuto">Iniciar barrido automático</button>
+      <button id="btnStopAuto" disabled>Detener</button>
+      <button id="btnExportLogs" disabled>Exportar logs CSV</button>
+    </div>
+
+    <label>Configuración exploración</label>
+    <div class="row" style="flex-wrap: wrap;">
+      <label style="flex-basis: 50%;">Cantidad semillas</label>
+      <input id="numSeeds" type="number" min="1" max="20" value="3" style="width: 80px" />
+      <label style="flex-basis: 50%;">Sim steps por prueba</label>
+      <input id="stepsPerSim" type="number" min="50" max="2000" value="500" style="width: 80px" />
+    </div>
+
+    <label>Rangos de parámetros para barrido</label>
+    <div class="row" style="flex-wrap: wrap; gap:10px;">
+      <label>α (perm.←mech)</label>
+      <input id="alphaRange" type="text" value="0,0.5,1,1.5,2" style="flex-grow:1" />
+      <label>β (perm.←|U|²)</label>
+      <input id="betaRange" type="text" value="0,0.05,0.1,0.2" style="flex-grow:1" />
+      <label>κ (tensión←U)</label>
+      <input id="kappaRange" type="text" value="0,0.05,0.1,0.15" style="flex-grow:1" />
+      <label>Umbral U_th</label>
+      <input id="UthRange" type="text" value="0.05,0.08,0.12" style="flex-grow:1" />
+      <label>Salto Δr</label>
+      <input id="drRange" type="text" value="0.01,0.03,0.05" style="flex-grow:1" />
+    </div>
+
+    <label>Indicadores y alertas (configurables)</label>
+    <div class="row" style="flex-wrap: wrap; gap:10px;">
+      <label>Energía máxima local > </label>
+      <input id="alertEnergyMax" type="number" min="0.01" max="10" step="0.01" value="0.15" style="width:80px" />
+      <label>Duración mínima (steps) focalización</label>
+      <input id="alertDuration" type="number" min="10" max="1000" value="100" style="width:80px" />
+      <label>Saltos mínimos en sim</label>
+      <input id="alertMinJumps" type="number" min="0" max="100" value="3" style="width:80px" />
+    </div>
+
+    <label>Estado actual de exploración</label>
+    <div class="stats">
+      <div class="stat">Pruebas totales: <span id="totalTests">0</span></div>
+      <div class="stat">Prueba actual: <span id="currentTest">0</span></div>
+      <div class="stat">Saltos detectados: <span id="totalJumps">0</span></div>
+      <div class="stat">Alertas generadas: <span id="alertsCount">0</span></div>
+    </div>
+
+    <label>Registro de alertas</label>
+    <pre id="alertLog" aria-live="polite"></pre>
+
+    <footer>Prototipo avanzado para descubrir fenómenos físicos emergentes con simulaciones automáticas y alertas inteligentes.</footer>
+  </div>
+
+  <div class="panel flex-grow">
+    <canvas id="cv"></canvas>
+  </div>
+</div>
+
 <script>
-window.addEventListener("load", () => {
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87ceeb);
-  scene.fog = new THREE.FogExp2(0x87ceeb, 0.0005);
+(() => {
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  let W=0,H=0;
+  function resize(){
+    W=cv.width=cv.clientWidth;
+    H=cv.height=window.innerHeight-36;
+  }
+  window.addEventListener('resize',resize);
+  resize();
 
-  const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
-  camera.position.set(0, window.innerHeight * 0.25 / 10, 0); // altura relativa
+  // UI elements
+  const NSlider = document.getElementById('N');
+  const Nval = document.getElementById('Nval');
+  const btnStartAuto = document.getElementById('btnStartAuto');
+  const btnStopAuto = document.getElementById('btnStopAuto');
+  const btnExportLogs = document.getElementById('btnExportLogs');
+  const alertLog = document.getElementById('alertLog');
+  const currentTestElem = document.getElementById('currentTest');
+  const totalTestsElem = document.getElementById('totalTests');
+  const totalJumpsElem = document.getElementById('totalJumps');
+  const alertsCountElem = document.getElementById('alertsCount');
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  document.body.appendChild(renderer.domElement);
+  // Param inputs for sweep
+  const numSeedsInput = document.getElementById('numSeeds');
+  const stepsPerSimInput = document.getElementById('stepsPerSim');
+  const alphaRangeInput = document.getElementById('alphaRange');
+  const betaRangeInput = document.getElementById('betaRange');
+  const kappaRangeInput = document.getElementById('kappaRange');
+  const UthRangeInput = document.getElementById('UthRange');
+  const drRangeInput = document.getElementById('drRange');
 
-  const light = new THREE.DirectionalLight(0xffffff, 1.5);
-  light.position.set(50, 100, 50);
-  scene.add(light);
-  scene.add(new THREE.AmbientLight(0x888888));
+  // Alert thresholds
+  const alertEnergyMaxInput = document.getElementById('alertEnergyMax');
+  const alertDurationInput = document.getElementById('alertDuration');
+  const alertMinJumpsInput = document.getElementById('alertMinJumps');
 
-  const SIZE = 2000;
-  const SEGMENTS = 200;
-  const geometry = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS);
-  geometry.rotateX(-Math.PI / 2);
+  let cfg = {
+    N: parseInt(NSlider.value),
+    dt: 0.002,
+    alpha: 0.2,
+    beta: 0.05,
+    kappa: 0.12,
+    gamma: 0.02,
+    eta: 0.02,
+    Uth: 0.08,
+    dr: 0.03,
+    a: 1,
+    thetaTot: 16
+  };
 
-  const colorArray = new Float32Array(geometry.attributes.position.count * 3);
-  geometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
-
-  const material = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    flatShading: false
+  NSlider.addEventListener('input', () => {
+    cfg.N = parseInt(NSlider.value);
+    Nval.textContent = NSlider.value;
   });
 
-  const terrain = new THREE.Mesh(geometry, material);
-  scene.add(terrain);
+  // Simulation state and arrays
+  let s, U, Uprev, u, uprev, v, r, theta;
+  let jumps = 0;
 
-let offsetX = 0, offsetZ = 0, offsetY = window.innerHeight * 0.8;
-  let pitch = 0, yaw = 0;
+  function initArrays() {
+    const N = cfg.N;
+    s = new Float64Array(N);
+    U = new Float64Array(N);
+    Uprev = new Float64Array(N);
+    u = new Float64Array(N);
+    uprev = new Float64Array(N);
+    v = new Float64Array(N);
+    r = new Float64Array(N);
+    theta = new Float64Array(N);
+    const ds = 1.0;
+    for(let j=0; j<N; j++) {
+      s[j] = j*ds;
+      U[j] = 0; Uprev[j] = 0;
+      u[j] = 0; uprev[j] = 0; v[j] = 0;
+    }
+    // geometry initial: r=a*theta with theta spacing
+    for(let j=0; j<N; j++) {
+      theta[j] = (j/(N-1))*cfg.thetaTot;
+      r[j] = cfg.a*theta[j];
+    }
+    jumps = 0;
+    totalJumpsElem.textContent = jumps;
+  }
 
-  // Velocidades relativas a pantalla
-  const SPEED = 0.5 * (window.innerHeight / 100); 
-  const VERTICAL_SPEED = 0.3 * (window.innerHeight / 100);
-  const ROT_SPEED = 0.015;
+  initArrays();
 
-  /* ===================== FUNCIONES TERRENO ===================== */
-  function piBasedAccident(x, z) {
-    const scale = 100;
-    const range = 2;
-    let h = 0;
-    const piDigits = ("14159265358979323846264338327950288419716939937510" +
-                      "58209749445923078164062862089986280348253421170679" +
-                      "82148086513282306647093844609550582231725359408128" +
-                      "48111745028410270193852110555964462294895493038196").split('');
-    const ix = Math.floor(x / scale);
-    const iz = Math.floor(z / scale);
-    for (let dx = -range; dx <= range; dx++) {
-      for (let dz = -range; dz <= range; dz++) {
-        const cx = ix + dx;
-        const cz = iz + dz;
-        const index = Math.abs((cx * 73856093 ^ cz * 19349663) % piDigits.length);
-        const digit1 = parseInt(piDigits[index % piDigits.length]) || 1;
-        const digit2 = parseInt(piDigits[(index + 1) % piDigits.length]) || 1;
-        const centerX = cx * scale;
-        const centerZ = cz * scale;
-        const dx2 = x - centerX;
-        const dz2 = z - centerZ;
-        const distSq = dx2*dx2 + dz2*dz2;
-        const type = (digit1 + digit2) % 5;
-        const height = 40 + (digit1 % 5) * 11;
-        const radius = 4 + (digit2 % 6) * 50;
-        if (distSq < radius * radius) {
-          let strength = 0;
-          switch (type) {
-            case 0: strength =  height * Math.exp(-distSq/(radius*2)); break;
-            case 1: strength = -height * Math.exp(-distSq/(radius*2)); break;
-            case 2: strength = distSq < radius*radius*0.5 ? height : 0; break;
-            case 3: strength =  height * Math.exp(-distSq/1); break;
-          }
-          h += strength;
+  // Gradients and laplacian helpers
+  function grad(arr,j){
+    const N=arr.length;
+    if(j<=0) return (arr[1]-arr[0]);
+    if(j>=N-1) return (arr[N-1]-arr[N-2]);
+    return (arr[j+1]-arr[j-1])/2;
+  }
+
+  function lap(arr,j){
+    const N=arr.length;
+    if(j<=0) return (arr[1]-2*arr[0]+arr[0]);
+    if(j>=N-1) return (arr[N-1]-2*arr[N-2]+arr[N-1]);
+    return (arr[j+1]-2*arr[j]+arr[j-1]);
+  }
+
+  // Step function for the coupled system
+  function step(dt){
+    const N = cfg.N;
+    // compute eps_r and c
+    const eps = new Float64Array(N);
+    const c = new Float64Array(N);
+    for(let j=0;j<N;j++) {
+      const divu = grad(u,j);
+      eps[j] = 1.0 + cfg.alpha*divu + cfg.beta*U[j]*U[j];
+      c[j] = 1/Math.sqrt(eps[j]);
+    }
+    // compute new U using finite difference in time and space
+    const newU = new Float64Array(N);
+    for(let j=1;j<N-1;j++) {
+      const lapU = lap(U,j);
+      const divc = (c[j+1]-c[j-1])/2;
+      const dUd = (U[j] - Uprev[j])/dt;
+      newU[j] =
+        2*U[j] - Uprev[j] +
+        dt*dt*( c[j]*c[j]*lapU - 2*cfg.gamma*dUd )
+        - dt*dt*cfg.kappa*U[j];
+    }
+    // boundary fixed zero
+    newU[0] = 0;
+    newU[N-1] = 0;
+
+    // detect jumps
+    for(let j=1;j<N-1;j++) {
+      if(Math.abs(newU[j]-U[j]) > cfg.Uth) {
+        jumps++;
+      }
+    }
+    totalJumpsElem.textContent = jumps;
+
+    // update states
+    for(let j=0;j<N;j++) {
+      Uprev[j] = U[j];
+      U[j] = newU[j];
+    }
+
+    // simple damping on u
+    for(let j=1;j<N-1;j++) {
+      const lapu = lap(u,j);
+      const T = U[j]*U[j];
+      const sigma = 0.1;
+      const dtt_u = lapu + T;
+      uprev[j] = u[j];
+      u[j] += dt*dt*dtt_u - dt*cfg.eta*u[j];
+    }
+  }
+
+  // Visualization
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    const N = cfg.N;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'cyan';
+    ctx.beginPath();
+    for(let j=0;j<N;j++) {
+      const angle = theta[j];
+      const rad = r[j] + 20*U[j];
+      const x = W/2 + rad*Math.cos(angle);
+      const y = H/2 + rad*Math.sin(angle);
+      if(j===0) ctx.moveTo(x,y);
+      else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // Draw jumps as red points
+    ctx.fillStyle = 'red';
+    for(let j=1;j<N-1;j++) {
+      if(Math.abs(U[j]-Uprev[j]) > cfg.Uth) {
+        const angle = theta[j];
+        const rad = r[j] + 20*U[j];
+        const x = W/2 + rad*Math.cos(angle);
+        const y = H/2 + rad*Math.sin(angle);
+        ctx.beginPath();
+        ctx.arc(x,y,3,0,Math.PI*2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // ==== Exploración automática ====
+
+  // Util para parsear rangos: "0,0.1,0.2" => [0,0.1,0.2]
+  function parseRange(str) {
+    return str.split(',').map(x=>parseFloat(x.trim())).filter(x=>!isNaN(x));
+  }
+
+  // Generar todas las combinaciones de parámetros
+  function cartesian(arrays) {
+    if(arrays.length===0) return [[]];
+    const rest = cartesian(arrays.slice(1));
+    const result = [];
+    for(const v of arrays[0]) {
+      for(const r of rest) {
+        result.push([v,...r]);
+      }
+    }
+    return result;
+  }
+
+  let isRunning = false;
+  let testQueue = [];
+  let testIndex = 0;
+  let totalTestsCount = 0;
+
+  // Logs y alertas
+  let alertCount = 0;
+  let totalJumpsCount = 0;
+  let logs = [];
+
+  function logAlert(text){
+    alertCount++;
+    alertsCountElem.textContent = alertCount;
+    const time = new Date().toLocaleTimeString();
+    alertLog.textContent = `${time} - ${text}\n` + alertLog.textContent;
+  }
+
+  function resetStats(){
+    testIndex = 0;
+    totalTestsCount = 0;
+    alertCount = 0;
+    logs = [];
+    totalJumpsCount = 0;
+    alertsCountElem.textContent = '0';
+    totalJumpsElem.textContent = '0';
+    alertLog.textContent = '';
+    currentTestElem.textContent = '0';
+    totalTestsElem.textContent = '0';
+  }
+
+  async function runTest(params, seed) {
+    cfg.alpha = params[0];
+    cfg.beta = params[1];
+    cfg.kappa = params[2];
+    cfg.Uth = params[3];
+    cfg.dr = params[4];
+
+    initArrays();
+
+    // Seed the initial U with small random noise
+    for(let j=0;j<cfg.N;j++){
+      U[j] = (Math.random()-0.5)*0.02*seed;
+      Uprev[j] = U[j];
+    }
+
+    let maxEnergy = 0;
+    let jumpCount = 0;
+    let focalDuration = 0;
+
+    for(let stepi=0; stepi < parseInt(stepsPerSimInput.value); stepi++) {
+      step(cfg.dt);
+
+      // Energy local máxima
+      const energyLocal = Math.max(...U.map(x=>Math.abs(x)));
+
+      if(energyLocal > maxEnergy) maxEnergy = energyLocal;
+
+      // Detección salto focal (energía local sobre umbral)
+      if(energyLocal > cfg.Uth) {
+        focalDuration++;
+      } else if(focalDuration>0){
+        focalDuration=0;
+      }
+
+      // Contar saltos
+      for(let j=1;j<cfg.N-1;j++){
+        if(Math.abs(U[j]-Uprev[j]) > cfg.Uth){
+          jumpCount++;
+          totalJumpsCount++;
         }
       }
+
+      // Pequeña pausa para no bloquear UI
+      if(stepi%200===0) await new Promise(r=>setTimeout(r,0));
     }
-    return h;
+
+    // Guardar logs
+    logs.push({
+      alpha: cfg.alpha,
+      beta: cfg.beta,
+      kappa: cfg.kappa,
+      Uth: cfg.Uth,
+      dr: cfg.dr,
+      maxEnergy,
+      focalDuration,
+      jumpCount,
+      seed,
+    });
+
+    totalJumpsElem.textContent = totalJumpsCount;
+
+    // Reglas alertas
+    const energyThresh = parseFloat(alertEnergyMaxInput.value);
+    const durThresh = parseInt(alertDurationInput.value);
+    const jumpThresh = parseInt(alertMinJumpsInput.value);
+
+    if(maxEnergy > energyThresh && focalDuration >= durThresh && jumpCount >= jumpThresh) {
+      logAlert(`Alerta: Parámetros α=${cfg.alpha} β=${cfg.beta} κ=${cfg.kappa} Uth=${cfg.Uth} dr=${cfg.dr} → maxEnergy=${maxEnergy.toFixed(3)}, dur=${focalDuration}, jumps=${jumpCount}, seed=${seed}`);
+    }
   }
-  function curvature(x, z) {
-    const radius = SIZE/2;
-    const d = Math.sqrt((x/radius)**2 + (z/radius)**2);
-    return -d*d*8;
-  }
-  function fineWaves(x, z, t=0) {
-    return Math.sin((x+offsetX + t*10)*0.08)*2 +
-           Math.cos((z+offsetZ + t*10)*0.1)*1.5;
-  }
-  function waveField3D(x, y, z, t) {
-    const kx = 0.1, ky = 0.1, kxy = 0.001, kz = 0.05;
-    const omega1 = 0.5, omega2 = 0.8, omega3 = 0.2, omega4 = 0.3;
-    return Math.sin(kx*x + omega1*t)
-         + Math.cos(ky*y + omega2*t)
-         + Math.sin(kxy*x*y + omega3*t)
-         + Math.sin(kz*z + omega4*t);
-  }
-  let heightMap = null, hmWidth = 0, hmHeight = 0;
-  function getHeightMapValue(x, z) {
-    if (!heightMap) return 0;
-    const ix = Math.floor(((x + SIZE/2) / SIZE) * (hmWidth - 1));
-    const iz = Math.floor(((z + SIZE/2) / SIZE) * (hmHeight - 1));
-    const cx = Math.min(Math.max(ix, 0), hmWidth -1);
-    const cz = Math.min(Math.max(iz, 0), hmHeight -1);
-    return heightMap[cz][cx] * 30;
-  }
-  let accumulatedTime = 0;
-  function getHeight(x, z, t=0) {
-    const baseHeight = getHeightMapValue(x+offsetX, z+offsetZ);
-    const acc = piBasedAccident(x+offsetX, z+offsetZ);
-    const curv = curvature(x, z);
-    const waves = fineWaves(x, z, t);
-    const field = waveField3D(x, 0, z, t);
-    return baseHeight + acc + curv + waves + field * 2.5;
-  }
-  function updateTerrainGeometry(isMoving) {
-    const posAttr = geometry.attributes.position;
-    const colorAttr = geometry.attributes.color;
-    if (isMoving) accumulatedTime += 0.016;
-    const minHeight = -50, maxHeight = 80;
-    const lowColor = new THREE.Color(0x1b3b5f);
-    const midColor = new THREE.Color(0x4d8f4b);
-    const highColor = new THREE.Color(0x4d8f4b);
-    const peakColor = new THREE.Color(0x888888);
-    const c1 = new THREE.Color();
-    const c2 = new THREE.Color();
-    for (let i = 0; i < posAttr.count; i++) {
-      const x = posAttr.getX(i);
-      const z = posAttr.getZ(i);
-      const y = getHeight(x, z, accumulatedTime);
-      posAttr.setY(i, y);
-      let hNorm = (y - minHeight) / (maxHeight - minHeight);
-      hNorm = Math.min(Math.max(hNorm, 0), 1);
-      let finalColor;
-      if (hNorm < 0.3) {
-        c1.copy(lowColor);
-        c2.copy(midColor);
-        finalColor = c1.lerp(c2, hNorm / 0.3);
-      } else if (hNorm < 0.6) {
-        c1.copy(midColor);
-        c2.copy(highColor);
-        finalColor = c1.lerp(c2, (hNorm - 0.3) / 0.3);
-      } else {
-        c1.copy(highColor);
-        c2.copy(peakColor);
-        finalColor = c1.lerp(c2, (hNorm - 0.6) / 0.4);
+
+  async function runAllTests() {
+    resetStats();
+
+    // Parse param ranges
+    const alphas = parseRange(alphaRangeInput.value);
+    const betas = parseRange(betaRangeInput.value);
+    const kappas = parseRange(kappaRangeInput.value);
+    const Uths = parseRange(UthRangeInput.value);
+    const drs = parseRange(drRangeInput.value);
+    const seedsCount = parseInt(numSeedsInput.value);
+
+    // Generate param combos cartesian product
+    const combos = cartesian([alphas, betas, kappas, Uths, drs]);
+    totalTestsCount = combos.length * seedsCount;
+    totalTestsElem.textContent = totalTestsCount;
+
+    isRunning = true;
+    btnStartAuto.disabled = true;
+    btnStopAuto.disabled = false;
+    btnExportLogs.disabled = true;
+
+    for(let i=0; i<combos.length && isRunning; i++) {
+      for(let seed=1; seed<=seedsCount && isRunning; seed++) {
+        currentTestElem.textContent = i*seedsCount + seed;
+        await runTest(combos[i], seed);
       }
-      finalColor.offsetHSL(0, (Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.02);
-      colorAttr.setXYZ(i, finalColor.r, finalColor.g, finalColor.b);
     }
-    posAttr.needsUpdate = true;
-    colorAttr.needsUpdate = true;
-    geometry.computeVertexNormals();
+
+    btnStartAuto.disabled = false;
+    btnStopAuto.disabled = true;
+    btnExportLogs.disabled = false;
+    isRunning = false;
   }
 
-  /* ===================== JOYSTICKS ===================== */
-  let leftJoystick = {x:0, y:0}, rightJoystick = {x:0, y:0}, zoomDelta = 0;
-  function setupJoystick(id, onMove) {
-    const el = document.getElementById(id);
-    const thumb = el.querySelector('.thumb');
-    let origin = {x:0, y:0};
-    let active = false;
-    let activeTouchId = null;
-    el.addEventListener('touchstart', e => {
-      if (active) return;
-      const t = e.changedTouches[0];
-      activeTouchId = t.identifier;
-      origin = {x: t.clientX, y: t.clientY};
-      active = true;
-    }, {passive: false});
-    el.addEventListener('touchmove', e => {
-      if (!active) return;
-      const touch = [...e.touches].find(t => t.identifier === activeTouchId);
-      if (!touch) return;
-      const dx = touch.clientX - origin.x;
-      const dy = touch.clientY - origin.y;
-      const val = {x: dx / (window.innerWidth * 0.1), y: -dy / (window.innerHeight * 0.1)};
-      onMove(val);
-      thumb.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-    }, {passive: false});
-    el.addEventListener('touchend', e => {
-      if (!active) return;
-      const endedTouch = [...e.changedTouches].find(t => t.identifier === activeTouchId);
-      if (!endedTouch) return;
-      onMove({x:0, y:0});
-      thumb.style.transform = 'translate(-50%, -50%)';
-      active = false;
-      activeTouchId = null;
-    }, {passive: false});
-  }
-  setupJoystick('joystick-left', val => leftJoystick = val);
-  setupJoystick('joystick-right', val => rightJoystick = val);
+  btnStartAuto.onclick = () => {
+    if(isRunning) return;
+    runAllTests();
+  };
 
-  const zoomThumb = document.getElementById('zoom-thumb');
-  const zoomSlider = document.getElementById('zoom-slider');
-  let zoomOriginY = 0, zoomActiveTouchId = null;
-  zoomSlider.addEventListener('touchstart', e => {
-    if (zoomActiveTouchId !== null) return;
-    const t = e.changedTouches[0];
-    zoomActiveTouchId = t.identifier;
-    zoomOriginY = t.clientY;
-  });
-  zoomSlider.addEventListener('touchmove', e => {
-    if (zoomActiveTouchId === null) return;
-    const touch = [...e.touches].find(t => t.identifier === zoomActiveTouchId);
-    if (!touch) return;
-    const dy = touch.clientY - zoomOriginY;
-    zoomDelta = -dy / (window.innerHeight * 0.05);
-    zoomThumb.style.top = `${50 + dy * 100 / window.innerHeight}%`;
-  });
-  zoomSlider.addEventListener('touchend', e => {
-    if (zoomActiveTouchId === null) return;
-    const endedTouch = [...e.changedTouches].find(t => t.identifier === zoomActiveTouchId);
-    if (!endedTouch) return;
-    zoomDelta = 0;
-    zoomThumb.style.top = '50%';
-    zoomActiveTouchId = null;
-  });
+  btnStopAuto.onclick = () => {
+    isRunning = false;
+  };
 
-  /* ===================== ANIMACIÓN ===================== */
-  function animate() {
+  btnExportLogs.onclick = () => {
+    if(logs.length===0) return;
+    let csv = "alpha,beta,kappa,Uth,dr,maxEnergy,focalDuration,jumpCount,seed\n";
+    logs.forEach(l => {
+      csv += `${l.alpha},${l.beta},${l.kappa},${l.Uth},${l.dr},${l.maxEnergy},${l.focalDuration},${l.jumpCount},${l.seed}\n`;
+    });
+    const blob = new Blob([csv], {type: 'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `salto_espiral_alertas_${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Main loop solo para visualización mientras corren simulaciones
+  function animate(){
+    draw();
     requestAnimationFrame(animate);
-
-    offsetX += leftJoystick.x * SPEED;
-    offsetY += leftJoystick.y * VERTICAL_SPEED;
-    offsetY = Math.max(2, offsetY);
-
-    yaw   -= rightJoystick.x * ROT_SPEED;
-    pitch += rightJoystick.y * ROT_SPEED;
-    pitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, pitch));
-
-    if (zoomDelta !== 0) {
-      const dir = new THREE.Vector3(
-        Math.cos(pitch)*Math.sin(yaw),
-        Math.sin(pitch),
-        Math.cos(pitch)*Math.cos(yaw)
-      );
-      offsetX += dir.x * zoomDelta * SPEED;
-      offsetZ += dir.z * zoomDelta * SPEED;
-    }
-
-    updateTerrainGeometry(true);
-
-    camera.position.set(0, offsetY, 0);
-    const dir = new THREE.Vector3(
-      Math.cos(pitch)*Math.sin(yaw),
-      Math.sin(pitch),
-      Math.cos(pitch)*Math.cos(yaw)
-    );
-    camera.lookAt(camera.position.clone().add(dir));
-
-    renderer.render(scene, camera);
   }
   animate();
-
-  window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
-});
+})();
 </script>
 </body>
 </html>
-
