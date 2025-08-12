@@ -1,258 +1,530 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Editor 3D — Completo Offline</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Simulación + Detección Automática de Descubrimientos Científicos</title>
 <style>
-:root{--accent:#ff8c42}
-*{box-sizing:border-box}
-html,body{height:100%;margin:0;background:#071018;color:#eef;font-family:system-ui,monospace}
-#app{display:flex;height:100vh}
-canvas{flex:1;cursor:grab;display:block;background:linear-gradient(#041018,#001018)}
-#panel{width:360px;padding:12px;background:rgba(6,12,20,0.95);border-left:1px solid rgba(255,255,255,0.04)}
-h1{font-size:16px;margin:0 0 6px;text-align:center}
-.btn{width:100%;padding:10px;margin:6px 0;border-radius:8px;border:0;cursor:pointer;background:#0b5;color:#001;font-weight:700}
-.btn.alt{background:#3cf;color:#002}.btn.warn{background:#ff6b6b;color:#200}
-label{font-size:13px;color:#bfe;margin-top:8px;display:block}
-.row{display:flex;gap:8px;margin-top:8px}
-.small{flex:1;padding:8px;border-radius:6px;background:#032430;border:1px solid rgba(255,255,255,0.03);color:#dff}
-.list{max-height:140px;overflow:auto;margin-top:8px;border-radius:6px;padding:6px;background:rgba(0,0,0,0.12)}
-.item{padding:8px;border-radius:6px;margin-bottom:6px;background:rgba(255,255,255,0.02);cursor:pointer}
-.item.sel{outline:2px solid var(--accent);background:rgba(255,255,255,0.04)}
-textarea{width:100%;height:100px;margin-top:8px;background:#001114;color:#7fff9b;border-radius:6px;padding:8px;border:1px solid rgba(255,255,255,0.03);font-family:monospace}
-footer{font-size:12px;opacity:0.85;margin-top:8px;text-align:center;color:#9fd}
-.kid .btn{font-size:20px;padding:14px}
-#gizmo{position:fixed;left:0;top:0;pointer-events:none}
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin:0; background:#0a1226; color:#cfd9e9;
+    display: flex; flex-direction: column; height: 100vh;
+  }
+  header {
+    background:#061126; padding: 0.5rem 1rem; font-weight: bold; font-size: 1.2rem;
+  }
+  main {
+    display:flex; flex:1; overflow:hidden;
+  }
+  #leftPanel {
+    width:350px; background:#0d1839; padding:1rem; overflow-y:auto;
+    box-shadow: inset -3px 0 6px #021026;
+  }
+  #rightPanel {
+    flex:1; display:flex; flex-direction: column;
+  }
+  #canvasContainer {
+    flex:1; background:#07152f;
+    display:flex; justify-content:center; align-items:center;
+  }
+  canvas {
+    background:#0a1a3c; border-radius:12px;
+    max-width: 100%; max-height: 100%;
+  }
+  button {
+    background:#2a62bf; border:none; color:#dde6f5;
+    padding:0.5rem 1rem; margin-top:1rem;
+    cursor:pointer; border-radius:8px;
+  }
+  button:disabled {
+    background:#4c7dc9aa;
+    cursor: not-allowed;
+  }
+  h2 {
+    margin-top: 0;
+  }
+  .alert {
+    background:#f45c5c; padding:0.5rem; border-radius:6px; margin-top:0.5rem; font-weight: bold;
+    color:#fff;
+  }
+  .log {
+    background:#07172f; border-radius:8px; padding:8px; height: 180px; overflow-y: auto; font-family: monospace; font-size: 12px;
+    margin-top: 0.5rem;
+  }
+  .stat {
+    margin-top: 0.4rem;
+  }
+  #clustersPlot {
+    margin-top: 1rem;
+    height: 180px;
+    background: #0b1b3a;
+    border-radius: 10px;
+    padding: 6px;
+    font-size: 12px;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
 </style>
 </head>
 <body>
-<div id="app">
-  <canvas id="gl"></canvas>
-  <div id="panel">
-    <h1>Editor 3D — Todo incluido (offline)</h1>
-    <button id="addCube" class="btn">➕ Añadir Cubo</button>
-    <button id="addSphere" class="btn alt">➕ Añadir Esfera</button>
-    <button id="addPlane" class="btn">➕ Añadir Suelo</button>
-    <button id="addFire" class="btn warn">🔥 Añadir Fuego</button>
-
-    <label>Color rápido</label>
-    <input id="colorPicker" type="color" value="#ff8c42" style="width:100%;height:36px;border-radius:6px;border:0"/>
-
-    <label>Objetos</label>
-    <div class="list" id="objectList"></div>
-
-    <div id="transforms" style="display:none">
-      <label>Pos X <input id="posX" class="small" type="range" min="-8" max="8" step="0.05"/></label>
-      <label>Pos Y <input id="posY" class="small" type="range" min="0" max="6" step="0.05"/></label>
-      <label>Pos Z <input id="posZ" class="small" type="range" min="-8" max="8" step="0.05"/></label>
-      <label>Rot Y <input id="rotY" class="small" type="range" min="0" max="360" step="1"/></label>
-      <label>Escala <input id="scale" class="small" type="range" min="0.1" max="3" step="0.01"/></label>
-      <div class="row"><button id="dup" class="small">Duplicar</button><button id="grp" class="small">Agrupar</button></div>
-      <div class="row"><button id="align" class="small">Alinear</button><button id="delete" class="small">Eliminar</button></div>
+<header>Simulación + Detección Automática de Descubrimientos Científicos</header>
+<main>
+  <section id="leftPanel">
+    <h2>Controles</h2>
+    <div>
+      <button id="btnStart">Iniciar Exploración Automática</button>
+      <button id="btnStop" disabled>Detener</button>
     </div>
 
-    <label>Escena (JSON)</label>
-    <textarea id="sceneJSON" placeholder="Exportar / Pegar JSON"></textarea>
-    <div class="row"><button id="exportJSON" class="small">Descargar JSON</button><button id="loadJSON" class="small">Cargar JSON</button></div>
-    <div class="row"><button id="exportPNG" class="small">Exportar PNG</button><button id="kidMode" class="small">Modo Niño</button></div>
-    <footer>Arrastra para rotar cámara • Click+arrastra objeto para mover • Gizmo para eje X/Z</footer>
-  </div>
-</div>
-<canvas id="gizmo"></canvas>
+    <h3>Estado</h3>
+    <div class="stat">Simulaciones totales: <span id="totalSims">0</span></div>
+    <div class="stat">Simulación actual: <span id="currentSim">0</span></div>
+    <div class="stat">Alertas de descubrimiento: <span id="discAlertsCount">0</span></div>
 
-<script type="module">
-// ========== Setup & math ==========
-const canvas = document.getElementById('gl'), gizmoCanvas = document.getElementById('gizmo');
-const gl = canvas.getContext('webgl2',{antialias:true}); if(!gl){ alert('WebGL2 necesario'); throw 0; }
-function resize(){ canvas.width=(window.innerWidth-360)*devicePixelRatio; canvas.height=window.innerHeight*devicePixelRatio; canvas.style.width=(window.innerWidth-360)+'px'; canvas.style.height=window.innerHeight+'px'; gl.viewport(0,0,canvas.width,canvas.height); gizmoCanvas.width=window.innerWidth; gizmoCanvas.height=window.innerHeight; gizmoCanvas.style.width='100%'; gizmoCanvas.style.height='100%'; }
-window.addEventListener('resize',resize); resize();
-const ID = new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
-const toRad = d=>d*Math.PI/180;
-const translation=(x,y,z)=>{const m=ID.slice(); m[12]=x; m[13]=y; m[14]=z; return m;}
-const scaling=(x,y,z)=>{const m=ID.slice(); m[0]=x; m[5]=y; m[10]=z; return m;}
-const rotY=a=>{const c=Math.cos(a),s=Math.sin(a); const m=ID.slice(); m[0]=c; m[2]=-s; m[8]=s; m[10]=c; return m;}
-function multiply(a,b){ const o=new Float32Array(16); for(let i=0;i<4;i++) for(let j=0;j<4;j++){ let s=0; for(let k=0;k<4;k++) s+=a[k*4+j]*b[i*4+k]; o[i*4+j]=s;} return o;}
-function perspective(f,ar,n,f2){const t=1/Math.tan(f/2), nf=1/(n-f2); const o=new Float32Array(16); o[0]=t/ar; o[5]=t; o[10]=(f2+n)*nf; o[11]=-1; o[14]=2*f2*n*nf; return o;}
-function lookAt(eye,center,up){const f=normalize([center[0]-eye[0],center[1]-eye[1],center[2]-eye[2]]); const s=normalize(cross(f,up)); const u=cross(s,f); const m=new Float32Array(16); m[0]=s[0];m[1]=u[0];m[2]=-f[0];m[3]=0; m[4]=s[1];m[5]=u[1];m[6]=-f[1];m[7]=0; m[8]=s[2];m[9]=u[2];m[10]=-f[2];m[11]=0; m[12]=-dot(s,eye);m[13]=-dot(u,eye);m[14]=dot(f,eye);m[15]=1; return m;}
-function normalize(v){const l=Math.hypot(...v)||1; return v.map(x=>x/l);} function cross(a,b){return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];} function dot(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
-function invert(m){const inv=new Float32Array(16); inv[0]=m[5]*m[10]*m[15]-m[5]*m[11]*m[14]-m[9]*m[6]*m[15]+m[9]*m[7]*m[14]+m[13]*m[6]*m[11]-m[13]*m[7]*m[10]; inv[4]=-m[4]*m[10]*m[15]+m[4]*m[11]*m[14]+m[8]*m[6]*m[15]-m[8]*m[7]*m[14]-m[12]*m[6]*m[11]+m[12]*m[7]*m[10]; inv[8]=m[4]*m[9]*m[15]-m[4]*m[11]*m[13]-m[8]*m[5]*m[15]+m[8]*m[7]*m[13]+m[12]*m[5]*m[11]-m[12]*m[7]*m[9]; inv[12]=-m[4]*m[9]*m[14]+m[4]*m[10]*m[13]+m[8]*m[5]*m[14]-m[8]*m[6]*m[13]-m[12]*m[5]*m[10]+m[12]*m[6]*m[9]; inv[1]=-m[1]*m[10]*m[15]+m[1]*m[11]*m[14]+m[9]*m[2]*m[15]-m[9]*m[3]*m[14]-m[13]*m[2]*m[11]+m[13]*m[3]*m[10]; inv[5]=m[0]*m[10]*m[15]-m[0]*m[11]*m[14]-m[8]*m[2]*m[15]+m[8]*m[3]*m[14]+m[12]*m[2]*m[11]-m[12]*m[3]*m[10]; inv[9]=-m[0]*m[9]*m[15]+m[0]*m[11]*m[13]+m[8]*m[1]*m[15]-m[8]*m[3]*m[13]-m[12]*m[1]*m[11]+m[12]*m[3]*m[9]; inv[13]=m[0]*m[9]*m[14]-m[0]*m[10]*m[13]-m[8]*m[1]*m[14]+m[8]*m[2]*m[13]+m[12]*m[1]*m[10]-m[12]*m[2]*m[9]; inv[2]=m[1]*m[6]*m[15]-m[1]*m[7]*m[14]-m[5]*m[2]*m[15]+m[5]*m[3]*m[14]+m[13]*m[2]*m[7]-m[13]*m[3]*m[6]; inv[6]=-m[0]*m[6]*m[15]+m[0]*m[7]*m[14]+m[4]*m[2]*m[15]-m[4]*m[3]*m[14]-m[12]*m[2]*m[7]+m[12]*m[3]*m[6]; inv[10]=m[0]*m[5]*m[15]-m[0]*m[7]*m[13]-m[4]*m[1]*m[15]+m[4]*m[3]*m[13]+m[12]*m[1]*m[7]-m[12]*m[3]*m[5]; inv[14]=-m[0]*m[5]*m[14]+m[0]*m[6]*m[13]+m[4]*m[1]*m[14]-m[4]*m[2]*m[13]-m[12]*m[1]*m[6]+m[12]*m[2]*m[5]; inv[3]=-m[1]*m[6]*m[11]+m[1]*m[7]*m[10]+m[5]*m[2]*m[11]-m[5]*m[3]*m[10]-m[9]*m[2]*m[7]+m[9]*m[3]*m[6]; inv[7]=m[0]*m[6]*m[11]-m[0]*m[7]*m[10]-m[4]*m[2]*m[11]+m[4]*m[3]*m[10]+m[8]*m[2]*m[7]-m[8]*m[3]*m[6]; inv[11]=-m[0]*m[5]*m[11]+m[0]*m[7]*m[9]+m[4]*m[1]*m[11]-m[4]*m[3]*m[9]-m[8]*m[1]*m[7]+m[8]*m[3]*m[5]; inv[15]=m[0]*m[5]*m[10]-m[0]*m[6]*m[9]-m[4]*m[1]*m[10]+m[4]*m[2]*m[9]+m[8]*m[1]*m[6]-m[8]*m[2]*m[5]; let det=m[0]*inv[0]+m[1]*inv[4]+m[2]*inv[8]+m[3]*inv[12]; if(!det) return ID; det=1.0/det; for(let i=0;i<16;i++) inv[i]*=det; return inv;}
-function mul4(m,v){return [ m[0]*v[0]+m[4]*v[1]+m[8]*v[2]+m[12]*v[3], m[1]*v[0]+m[5]*v[1]+m[9]*v[2]+m[13]*v[3], m[2]*v[0]+m[6]*v[1]+m[10]*v[2]+m[14]*v[3], m[3]*v[0]+m[7]*v[1]+m[11]*v[2]+m[15]*v[3] ];}
+    <h3>Alertas Detectadas</h3>
+    <div id="alerts" class="log" aria-live="polite" aria-atomic="true"></div>
 
-// ========== Shaders ==========
-const vsSolid=`#version 300 es
-in vec3 aPos;in vec3 aNor;uniform mat4 uProj,uView,uModel;out vec3 vN,vP;void main(){vec4 w=uModel*vec4(aPos,1.0);vP=w.xyz;vN=mat3(uModel)*aNor;gl_Position=uProj*uView*w;}`;
-const fsSolid=`#version 300 es
-precision highp float;in vec3 vN,vP;uniform vec3 uLight,uViewPos;uniform vec4 uColor;out vec4 o;void main(){vec3 N=normalize(vN);vec3 L=normalize(uLight);vec3 V=normalize(uViewPos-vP);vec3 R=reflect(-L,N);float d=max(dot(N,L),0.0);float s=pow(max(dot(V,R),0.0),18.0);vec3 c=0.12*uColor.rgb + d*uColor.rgb + 0.6*s*vec3(1.0);o=vec4(c,uColor.a);}`;
-const vsPart=`#version 300 es
-in vec3 aP;in float aS,aL;uniform mat4 uProj,uView;uniform float uTime;out float life;void main(){float age=mod(uTime+aL,1.0);vec3 p=aP+vec3(sin(age*50.0+aL*20.0)*0.04,age*1.2,cos(age*60.0+aL*25.0)*0.04);gl_Position=uProj*uView*vec4(p,1.0);gl_PointSize=aS*(1.0-age);life=1.0-age;}`;
-const fsPart=`#version 300 es
-precision mediump float;in float life;out vec4 o;void main(){vec2 c=gl_PointCoord-0.5;float d=length(c);float a=smoothstep(0.5,0.0,d)*life;vec3 col=mix(vec3(1.0,1.0,0.6),vec3(1.0,0.2,0.0),life);o=vec4(col,a);}`;
+    <h3>Clusters y Análisis</h3>
+    <div id="clustersPlot">(Gráfico de clusters aparecerá aquí)</div>
+  </section>
 
-// compile
-function sh(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) console.log(gl.getShaderInfoLog(s)); return s;}
-function prog(vs,fs){const p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_SHADER,vs));gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(p); if(!gl.getProgramParameter(p,gl.LINK_STATUS)) console.log(gl.getProgramInfoLog(p)); return p;}
-const P_SOLID=prog(vsSolid,fsSolid), P_PART=prog(vsPart,fsPart);
+  <section id="rightPanel">
+    <div id="canvasContainer">
+      <canvas id="canvas" width="600" height="600"></canvas>
+    </div>
+  </section>
+</main>
 
-// ========== Geometry helpers ==========
-function makeVAO(pos,norm,ind){const vao=gl.createVertexArray();gl.bindVertexArray(vao); if(pos){const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);} if(norm){const b2=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b2);gl.bufferData(gl.ARRAY_BUFFER,norm,gl.STATIC_DRAW); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1,3,gl.FLOAT,false,0,0);} if(ind){const ib=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,ind,gl.STATIC_DRAW);} gl.bindVertexArray(null); return vao;}
+<script>
+(() => {
+  // --- Parámetros y Configuración ---
+  const paramGrid = {
+    alpha: [0, 0.5, 1, 1.5, 2],
+    beta: [0, 0.05, 0.1, 0.2],
+    kappa: [0, 0.05, 0.1, 0.15],
+    Uth: [0.05, 0.08, 0.12],
+    dr: [0.01, 0.03, 0.05]
+  };
+  const seedsCount = 3;      // cantidad de seeds (variación aleatoria)
+  const stepsPerSim = 500;   // pasos de simulación por corrida
+  const N = 256;             // nodos de la simulación
+  const evaluationInterval = 20; // simulaciones entre evaluaciones
 
-// cube, sphere, plane (compact)
-function createCube(){ const p=new Float32Array([ -0.5,-0.5,0.5, 0.5,-0.5,0.5, 0.5,0.5,0.5, -0.5,-0.5,0.5, 0.5,0.5,0.5, -0.5,0.5,0.5, -0.5,-0.5,-0.5, -0.5,0.5,-0.5, 0.5,0.5,-0.5, -0.5,-0.5,-0.5, 0.5,0.5,-0.5, 0.5,-0.5,-0.5, -0.5,-0.5,-0.5, -0.5,-0.5,0.5, -0.5,0.5,0.5, -0.5,-0.5,-0.5, -0.5,0.5,0.5, -0.5,0.5,-0.5, 0.5,-0.5,-0.5, 0.5,0.5,-0.5, 0.5,0.5,0.5, 0.5,-0.5,-0.5, 0.5,0.5,0.5, 0.5,-0.5,0.5, -0.5,0.5,-0.5, -0.5,0.5,0.5, 0.5,0.5,0.5, -0.5,0.5,-0.5, 0.5,0.5,0.5, 0.5,0.5,-0.5, -0.5,-0.5,-0.5, 0.5,-0.5,-0.5, 0.5,-0.5,0.5, -0.5,-0.5,-0.5, 0.5,-0.5,0.5, -0.5,-0.5,0.5 ]); const n=new Float32Array(p.length); for(let i=0;i<p.length;i+=3){ const x=p[i],y=p[i+1],z=p[i+2],l=Math.hypot(x,y,z)||1; n[i]=x/l; n[i+1]=y/l; n[i+2]=z/l;} const ind=new Uint16Array(36); for(let i=0;i<36;i++)ind[i]=i; return {pos:p,nor:n,ind:ind,count:36}; }
-function createPlane(size=12,div=80){ const pos=[]; const step=size/div; for(let y=0;y<=div;y++) for(let x=0;x<=div;x++) pos.push(-size/2 + x*step, 0, -size/2 + y*step); const idx=[]; for(let y=0;y<div;y++) for(let x=0;x<div;x++){ const i=y*(div+1)+x; idx.push(i,i+1,i+div+1); idx.push(i+1,i+div+2,i+div+1);} return {pos:new Float32Array(pos),ind:new Uint16Array(idx),count:idx.length}; }
-function createSphere(lat=16,lon=24){ const p=[],n=[],idx=[]; for(let y=0;y<=lat;y++){ const v=y/lat; const theta=v*Math.PI; for(let x=0;x<=lon;x++){ const u=x/lon; const phi=u*2*Math.PI; const px=Math.sin(theta)*Math.cos(phi)*0.5, py=Math.cos(theta)*0.5, pz=Math.sin(theta)*Math.sin(phi)*0.5; p.push(px,py,pz); const l=Math.hypot(px,py,pz)||1; n.push(px/l,py/l,pz/l); }} for(let y=0;y<lat;y++) for(let x=0;x<lon;x++){ const a=y*(lon+1)+x, b=a+lon+1; idx.push(a,b,a+1); idx.push(b,b+1,a+1);} return {pos:new Float32Array(p),nor:new Float32Array(n),ind:new Uint16Array(idx),count:idx.length}; }
+  // Estado UI
+  const btnStart = document.getElementById('btnStart');
+  const btnStop = document.getElementById('btnStop');
+  const totalSimsSpan = document.getElementById('totalSims');
+  const currentSimSpan = document.getElementById('currentSim');
+  const discAlertsCountSpan = document.getElementById('discAlertsCount');
+  const alertsDiv = document.getElementById('alerts');
+  const clustersPlot = document.getElementById('clustersPlot');
 
-// build
-const cube=createCube(), cubeVAO=makeVAO(cube.pos,cube.nor,cube.ind);
-const sphere=createSphere(18,28), sphereVAO=makeVAO(sphere.pos,sphere.nor,sphere.ind);
-const plane=createPlane(12,80), planeVAO=makeVAO(plane.pos,null,plane.ind);
+  // Canvas y contexto
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
 
-// particles
-const PCOUNT=260; const pPos=new Float32Array(PCOUNT*3), pSize=new Float32Array(PCOUNT), pLife=new Float32Array(PCOUNT);
-for(let i=0;i<PCOUNT;i++){ pPos[3*i+0]=(Math.random()-0.5)*0.6; pPos[3*i+1]=0; pPos[3*i+2]=(Math.random()-0.5)*0.6; pSize[i]=10+Math.random()*16; pLife[i]=Math.random();}
-const partVAO=gl.createVertexArray(); gl.bindVertexArray(partVAO);
-const bp=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bp); gl.bufferData(gl.ARRAY_BUFFER,pPos,gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);
-const bs=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bs); gl.bufferData(gl.ARRAY_BUFFER,pSize,gl.STATIC_DRAW); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1,1,gl.FLOAT,false,0,0);
-const bl=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bl); gl.bufferData(gl.ARRAY_BUFFER,pLife,gl.STATIC_DRAW); gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2,1,gl.FLOAT,false,0,0);
-gl.bindVertexArray(null);
+  // Variables de simulación
+  let s, U, Uprev, u, uprev, v, r, theta;
+  let isRunning = false;
 
-// ========== Scene ==========
-class Obj{ constructor(type){ this.type=type; this.pos=[0,type==='plane'?0:0.2,0]; this.rot=[0,0,0]; this.scale=[1,1,1]; this.color=[Math.random()*0.6+0.3,Math.random()*0.6+0.3,Math.random()*0.6+0.3,1]; this.name=type+'_'+Math.floor(Math.random()*999); this.children=[];} model(){ const T=translation(this.pos[0],this.pos[1],this.pos[2]); const R=rotY(this.rot[1]); const S=scaling(this.scale[0],this.scale[1],this.scale[2]); return multiply(T,multiply(R,S)); } serialize(){ return {type:this.type,pos:this.pos,rot:this.rot,scale:this.scale,color:this.color,name:this.name,children:this.children.map(c=>c.name)} } static deserialize(d){ const o=new Obj(d.type); o.pos=d.pos; o.rot=d.rot; o.scale=d.scale; o.color=d.color; o.name=d.name; return o; } }
-const scene=[ new Obj('plane') ]; scene[0].scale=[12,1,12]; scene[0].color=[0.15,0.28,0.12,1];
-let selected=null;
+  // Logs y datos para ML
+  let mlAlertsCount = 0;
+  let discoveryAlertsCount = 0;
 
-// ========== UI ==========
-const byId=id=>document.getElementById(id);
-const el={
- addCube:byId('addCube'), addSphere:byId('addSphere'), addPlane:byId('addPlane'), addFire:byId('addFire'),
- color:byId('colorPicker'), list:byId('objectList'), trans:byId('transforms'),
- posX:byId('posX'), posY:byId('posY'), posZ:byId('posZ'), rotY:byId('rotY'), scale:byId('scale'),
- dup:byId('dup'), grp:byId('grp'), align:byId('align'), del:byId('delete'),
- sceneJSON:byId('sceneJSON'), exportJSON:byId('exportJSON'), loadJSON:byId('loadJSON'), exportPNG:byId('exportPNG'), kidMode:byId('kidMode')
-};
-function refreshList(){ el.list.innerHTML=''; for(const o of scene){ const d=document.createElement('div'); d.className='item'+(o===selected?' sel':''); d.textContent=o.name+' ('+o.type+')'; d.onclick=()=>{ selected=o; updateTransforms(); refreshList(); }; el.list.appendChild(d);} }
-function updateTransforms(){ if(!selected || selected.type==='plane'){ el.trans.style.display='none'; return; } el.trans.style.display='block'; el.posX.value=selected.pos[0]; el.posY.value=selected.pos[1]; el.posZ.value=selected.pos[2]; el.rotY.value=Math.round(selected.rot[1]*180/Math.PI); el.scale.value=selected.scale[0]; }
-el.addCube.onclick=()=>{ const o=new Obj('cube'); o.pos=[0,0.6,0]; o.color=hexToRgb(el.color.value); scene.push(o); selected=o; refreshList(); updateTransforms(); }
-el.addSphere.onclick=()=>{ const o=new Obj('sphere'); o.pos=[0,0.6,0]; o.color=hexToRgb(el.color.value); scene.push(o); selected=o; refreshList(); updateTransforms(); }
-el.addPlane.onclick=()=>{ const o=new Obj('plane'); o.scale=[3,1,3]; o.color=[0.15,0.28,0.12,1]; scene.push(o); selected=o; refreshList(); updateTransforms(); }
-el.addFire.onclick=()=>{ const o=new Obj('fire'); o.pos=[0,0.1,0]; scene.push(o); selected=o; refreshList(); updateTransforms(); }
+  // --- Funciones básicas simulación ---
+  function initArrays(cfg, seed) {
+    s = new Float64Array(N);
+    U = new Float64Array(N);
+    Uprev = new Float64Array(N);
+    u = new Float64Array(N);
+    uprev = new Float64Array(N);
+    v = new Float64Array(N);
+    r = new Float64Array(N);
+    theta = new Float64Array(N);
+    for(let j=0; j<N; j++) {
+      s[j] = j;
+      U[j] = (Math.random()-0.5)*0.02*seed;
+      Uprev[j] = U[j];
+      u[j] = 0;
+      uprev[j] = 0;
+      v[j] = 0;
+      theta[j] = (j/(N-1))*cfg.thetaTot;
+      r[j] = cfg.a*theta[j];
+    }
+  }
 
-el.posX.oninput=el.posY.oninput=el.posZ.oninput=()=>{ if(!selected) return; selected.pos=[parseFloat(el.posX.value),parseFloat(el.posY.value),parseFloat(el.posZ.value)]; }
-el.rotY.oninput=()=>{ if(!selected) return; selected.rot[1]=toRad(parseFloat(el.rotY.value)); }
-el.scale.oninput=()=>{ if(!selected) return; const s=parseFloat(el.scale.value); selected.scale=[s,s,s]; }
+  function grad(arr,j){
+    if(j<=0) return arr[1]-arr[0];
+    if(j>=arr.length-1) return arr[arr.length-1]-arr[arr.length-2];
+    return (arr[j+1]-arr[j-1])/2;
+  }
+  function lap(arr,j){
+    if(j<=0) return arr[1]-2*arr[0]+arr[0];
+    if(j>=arr.length-1) return arr[arr.length-1]-2*arr[arr.length-2]+arr[arr.length-1];
+    return arr[j+1]-2*arr[j]+arr[j-1];
+  }
 
-el.dup.onclick=()=>{ if(!selected){ alert('Selecciona un objeto'); return;} const copy=Obj.deserialize(selected.serialize()); copy.name=selected.name+'_copy'; scene.push(copy); selected=copy; refreshList(); updateTransforms(); }
-el.del.onclick=()=>{ if(!selected) return; const i=scene.indexOf(selected); if(i>=0) scene.splice(i,1); selected=scene[0]||null; refreshList(); updateTransforms(); }
-el.align.onclick=()=>{ if(!selected) return; selected.pos[0]=Math.round(selected.pos[0]); selected.pos[2]=Math.round(selected.pos[2]); updateTransforms(); }
-el.grp.onclick=()=>{ if(!selected) return; const g=new Obj('group'); g.name='group_'+Math.floor(Math.random()*999); scene.push(g); // naive grouping: attach nearby objs
- for(let i=scene.length-1;i>=0;i--){ const o=scene[i]; if(o!==g && o!==selected && o.type!=='plane' && Math.hypot(o.pos[0]-selected.pos[0], o.pos[2]-selected.pos[2])<1.6){ g.children.push(o); scene.splice(i,1);} } selected=g; refreshList(); updateTransforms(); }
+  function step(cfg, dt){
+    const N = cfg.N;
+    const eps = new Float64Array(N);
+    const c = new Float64Array(N);
+    for(let j=0;j<N;j++) {
+      const divu = grad(u,j);
+      eps[j] = 1.0 + cfg.alpha*divu + cfg.beta*U[j]*U[j];
+      c[j] = 1/Math.sqrt(eps[j]);
+    }
+    const newU = new Float64Array(N);
+    for(let j=1;j<N-1;j++) {
+      const lapU = lap(U,j);
+      const dUd = (U[j] - Uprev[j])/dt;
+      newU[j] = 2*U[j] - Uprev[j] + dt*dt*(c[j]*c[j]*lapU - 2*cfg.gamma*dUd) - dt*dt*cfg.kappa*U[j];
+    }
+    newU[0] = 0;
+    newU[N-1] = 0;
 
-el.exportJSON.onclick=()=>{ const data=scene.map(s=>s.serialize()); const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='scene.json'; a.click(); }
-el.loadJSON.onclick=()=>{ try{ const data=JSON.parse(el.sceneJSON.value); scene.length=0; for(const d of data) scene.push(Obj.deserialize(d)); selected=scene[0]||null; refreshList(); updateTransforms(); }catch(e){alert('JSON inválido');} }
-el.exportPNG.onclick=()=>{ const url=canvas.toDataURL('image/png'); const a=document.createElement('a'); a.href=url; a.download='scene.png'; a.click(); }
-el.kidMode.onclick=()=>{ document.body.classList.toggle('kid'); }
+    for(let j=1;j<N-1;j++) {
+      if(Math.abs(newU[j]-U[j]) > cfg.Uth) cfg.jumps++;
+    }
 
-// helper
-function hexToRgb(hex){ if(hex[0]==='#') hex=hex.slice(1); return [parseInt(hex.slice(0,2),16)/255, parseInt(hex.slice(2,4),16)/255, parseInt(hex.slice(4,6),16)/255,1]; }
+    for(let j=0;j<N;j++) {
+      Uprev[j] = U[j];
+      U[j] = newU[j];
+    }
 
-// ========== Picking, camera & gizmo ==========
-let draggingCam=false, lastX=0,lastY=0, yaw=0.8, pitch=0.25, dist=8;
-canvas.addEventListener('mousedown', (e)=>{ const r=canvas.getBoundingClientRect(); const x=e.clientX-r.left,y=e.clientY-r.top; const ray=getMouseRay(x,y); const hit=pick(ray); if(hit){ dragState.active=true; dragState.obj=hit; const p=rayPlaneIntersect(ray.origin,ray.direction,hit.pos[1]); if(p) dragState.offset=[hit.pos[0]-p[0],0,hit.pos[2]-p[2]]; canvas.style.cursor='grabbing'; } else { draggingCam=true; lastX=e.clientX; lastY=e.clientY; canvas.style.cursor='grabbing'; }});
-window.addEventListener('mouseup',()=>{ draggingCam=false; dragState.active=false; dragState.obj=null; gizmoDrag=null; canvas.style.cursor='grab';});
-window.addEventListener('mousemove',(e)=>{ if(dragState.active && dragState.obj && !gizmoDrag.active){ const r=canvas.getBoundingClientRect(); const ray=getMouseRay(e.clientX-r.left,e.clientY-r.top); const p=rayPlaneIntersect(ray.origin,ray.direction,dragState.obj.pos[1]); if(p){ dragState.obj.pos[0]=p[0]+dragState.offset[0]; dragState.obj.pos[2]=p[2]+dragState.offset[2]; updateTransforms(); refreshList(); } } else if(gizmoDrag.active && selected){ // gizmo axis drag
-  const r=canvas.getBoundingClientRect(); const mx=e.clientX-r.left,my=e.clientY-r.top;
-  const delta = screenDeltaAlongAxis(gizmoDrag.axis, mx - gizmoDrag.startX, my - gizmoDrag.startY);
-  selected.pos[gizmoDrag.axis==='x'?0:2] = gizmoDrag.startValue + delta;
-  updateTransforms(); refreshList();
- } else if(draggingCam){ const dx=e.clientX-lastX, dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY; yaw+=dx*0.01; pitch+=dy*0.01; pitch=Math.max(-1.4,Math.min(1.4,pitch)); }});
-canvas.addEventListener('wheel',(e)=>{ dist+=e.deltaY*0.02; dist=Math.max(2,Math.min(60,dist)); e.preventDefault(); });
-const dragState={active:false,obj:null,offset:[0,0,0]};
+    for(let j=1;j<N-1;j++) {
+      const lapu = lap(u,j);
+      const T = U[j]*U[j];
+      const dtt_u = lapu + T;
+      u[j] += dt*dt*dtt_u - dt*cfg.eta*u[j];
+    }
+  }
 
-// ray
-function cameraPos(){ const cy=Math.sin(pitch)*dist; const cx=Math.cos(pitch)*Math.sin(yaw)*dist; const cz=Math.cos(pitch)*Math.cos(yaw)*dist; return [cx,cy,cz]; }
-function getMouseRay(mx,my){ const ndcX=(mx/canvas.clientWidth)*2-1, ndcY=1-(my/canvas.clientHeight)*2; const proj=perspective(Math.PI/4,canvas.width/canvas.height,0.1,200); const view=lookAt(cameraPos(),[0,0,0],[0,1,0]); const inv=invert(multiply(proj,view)); const near=mul4(inv,[ndcX,ndcY,-1,1]); const far=mul4(inv,[ndcX,ndcY,1,1]); for(let i=0;i<3;i++){near[i]/=near[3];far[i]/=far[3];} return {origin:[near[0],near[1],near[2]], direction: normalize([far[0]-near[0],far[1]-near[1],far[2]-near[2]])}; }
-function pick(ray){ for(const o of scene){ if(o.type==='plane'||o.type==='fire'||o.type==='group') continue; const s=Math.max(o.scale[0],o.scale[1],o.scale[2])*0.5; const min=[o.pos[0]-s,o.pos[1]-s,o.pos[2]-s], max=[o.pos[0]+s,o.pos[1]+s,o.pos[2]+s]; if(rayAABB(ray.origin,ray.direction,min,max)) return o; } return null; }
-function rayAABB(ro,rd,min,max){ let tmin=(min[0]-ro[0])/(rd[0]||1e-9), tmax=(max[0]-ro[0])/(rd[0]||1e-9); if(tmin>tmax){const tmp=tmin;tmin=tmax;tmax=tmp;} let tymin=(min[1]-ro[1])/(rd[1]||1e-9), tymax=(max[1]-ro[1])/(rd[1]||1e-9); if(tymin>tymax){const tmp=tymin;tymin=tymax;tymax=tmp;} if((tmin>tymax)||(tymin>tmax)) return false; if(tymin>tmin) tmin=tymin; if(tymax<tmax) tmax=tymax; let tzmin=(min[2]-ro[2])/(rd[2]||1e-9), tzmax=(max[2]-ro[2])/(rd[2]||1e-9); if(tzmin>tzmax){const tmp=tzmin;tzmin=tzmax;tzmax=tmp;} if((tmin>tzmax)||(tzmin>tmax)) return false; return true;}
-function rayPlaneIntersect(ro,rd,y){ if(Math.abs(rd[1])<1e-6) return null; const t=(y-ro[1])/rd[1]; if(t<0) return null; return [ro[0]+rd[0]*t,y,ro[2]+rd[2]*t]; }
+  function extractFeatures(log){
+    const Uabs = log.U.map(x => Math.abs(x));
+    const maxEnergy = Math.max(...Uabs);
+    const focalDuration = log.focalDuration;
+    const jumps = log.jumps;
 
-// gizmo dragging: compute screen-space direction of world axis and map mouse movement to world distance along axis
-let gizmoDrag = {active:false,axis:null,startX:0,startY:0,startValue:0};
-function screenDirForAxis(axis){ // returns normalized 2D screen vector for world axis (0:x,2:z)
- const eye=cameraPos(), view=lookAt(eye,[0,0,0],[0,1,0]), proj=perspective(Math.PI/4,canvas.width/canvas.height,0.1,200);
- const origin=[selected.pos[0],selected.pos[1],selected.pos[2],1];
- const axisPoint = axis==='x' ? [selected.pos[0]+1,selected.pos[1],selected.pos[2],1] : [selected.pos[0],selected.pos[1],selected.pos[2]+1,1];
- const clipO=mul4(multiply(proj,view),origin), clipA=mul4(multiply(proj,view),axisPoint);
- if(Math.abs(clipO[3])<1e-6||Math.abs(clipA[3])<1e-6) return [0,0];
- const ndcO=[clipO[0]/clipO[3], clipO[1]/clipO[3]], ndcA=[clipA[0]/clipA[3], clipA[1]/clipA[3]];
- const sxO=(ndcO[0]*0.5+0.5)*gizmoCanvas.width, syO=( -ndcO[1]*0.5+0.5)*gizmoCanvas.height;
- const sxA=(ndcA[0]*0.5+0.5)*gizmoCanvas.width, syA=( -ndcA[1]*0.5+0.5)*gizmoCanvas.height;
- const vx=sxA-sxO, vy=syA-syO; const len=Math.hypot(vx,vy)||1; return [vx/len, vy/len];
-}
-function screenDeltaAlongAxis(axis, dx, dy){
- const dir = screenDirForAxis(axis); return (dx*dir[0] + dy*dir[1]) / (gizmoCanvas.width) * (dist*1.5); // scale factor
-}
+    const sumU = Uabs.reduce((a,b)=>a+b,0);
+    const p = Uabs.map(x=>x/sumU);
+    let entropy = 0;
+    for(let v of p){
+      if(v>0) entropy -= v*Math.log(v);
+    }
 
-// gizmo mouse handling (on panel overlay)
-gizmoCanvas.addEventListener('mousedown', (e)=>{
- if(!selected || selected.type==='plane') return;
- const r=gizmoCanvas.getBoundingClientRect(), mx=e.clientX-r.left,my=e.clientY-r.top;
- // detect near arrow endpoints: compute screen pos of selected
- const eye=cameraPos(), view=lookAt(eye,[0,0,0],[0,1,0]), proj=perspective(Math.PI/4,canvas.width/canvas.height,0.1,200);
- const world=[selected.pos[0],selected.pos[1],selected.pos[2],1]; const clip=mul4(multiply(proj,view),world); if(Math.abs(clip[3])<1e-6) return;
- const ndc=[clip[0]/clip[3], clip[1]/clip[3]]; const sx=(ndc[0]*0.5+0.5)*gizmoCanvas.width, sy=(-ndc[1]*0.5+0.5)*gizmoCanvas.height;
- const dx=mx-sx, dy=my-sy;
- if(Math.hypot(dx,dy) < 50){ // start center = Z drag if up/down? we'll prefer axis handle detection
-   // check distance to X handle
-   const xhandle = screenDirForAxis('x'); const hx=sx + xhandle[0]*40, hy=sy + xhandle[1]*40;
-   const zh = screenDirForAxis('z'); const zx=sx + zh[0]* -40, zy=sy + zh[1]* -40;
-   if(Math.hypot(mx-hx,my-hy) < 18){ gizmoDrag.active=true; gizmoDrag.axis='x'; gizmoDrag.startX=mx; gizmoDrag.startY=my; gizmoDrag.startValue=selected.pos[0]; }
-   else if(Math.hypot(mx-zx,my-zy) < 18){ gizmoDrag.active=true; gizmoDrag.axis='z'; gizmoDrag.startX=mx; gizmoDrag.startY=my; gizmoDrag.startValue=selected.pos[2]; }
- }
-});
-window.addEventListener('mouseup',()=>{ gizmoDrag.active=false; gizmoDrag.axis=null; });
+    return [maxEnergy, focalDuration, jumps, entropy];
+  }
 
-// ========== Rendering ==========
-gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
-const uProjS = gl.getUniformLocation(P_SOLID,'uProj'), uViewS = gl.getUniformLocation(P_SOLID,'uView'), uModelS = gl.getUniformLocation(P_SOLID,'uModel'), uLightS = gl.getUniformLocation(P_SOLID,'uLight'), uViewPosS = gl.getUniformLocation(P_SOLID,'uViewPos'), uColorS = gl.getUniformLocation(P_SOLID,'uColor');
-const uProjP = gl.getUniformLocation(P_PART,'uProj'), uViewP = gl.getUniformLocation(P_PART,'uView'), uTimeP = gl.getUniformLocation(P_PART,'uTime');
+  function kmeans(data, k, maxIter=50) {
+    const centers = [];
+    for(let i=0;i<k;i++) {
+      centers.push(data[Math.floor(Math.random()*data.length)].slice());
+    }
 
-let t0=performance.now();
-function render(now){
- resize();
- const time=(now-t0)*0.001;
- gl.clearColor(0.02,0.04,0.07,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
- const eye=cameraPos(), view=lookAt(eye,[0,0,0],[0,1,0]), proj=perspective(Math.PI/4,canvas.width/canvas.height,0.1,200);
- // solids
- gl.useProgram(P_SOLID); gl.uniformMatrix4fv(uProjS,false,proj); gl.uniformMatrix4fv(uViewS,false,view); gl.uniform3fv(uLightS,normalize([0.5,1,0.3])); gl.uniform3fv(uViewPosS,eye);
- for(const o of scene){
-   if(o.type==='plane'){ gl.bindVertexArray(planeVAO); gl.uniformMatrix4fv(uModelS,false,o.model()); gl.uniform4fv(uColorS,o.color); gl.drawElements(gl.TRIANGLES,plane.count,gl.UNSIGNED_SHORT,0); gl.bindVertexArray(null); continue; }
-   if(o.type==='cube'){ gl.bindVertexArray(cubeVAO); gl.uniformMatrix4fv(uModelS,false,o.model()); gl.uniform4fv(uColorS,o.color); gl.drawElements(gl.TRIANGLES,cube.count,gl.UNSIGNED_SHORT,0); gl.bindVertexArray(null); continue; }
-   if(o.type==='sphere'){ gl.bindVertexArray(sphereVAO); gl.uniformMatrix4fv(uModelS,false,o.model()); gl.uniform4fv(uColorS,o.color); gl.drawElements(gl.TRIANGLES,sphere.count,gl.UNSIGNED_SHORT,0); gl.bindVertexArray(null); continue; }
-   if(o.type==='fire'){ gl.useProgram(P_PART); gl.uniformMatrix4fv(uProjP,false,proj); const tMat=translation(-o.pos[0],-o.pos[1],-o.pos[2]); const viewP=multiply(view,tMat); gl.uniformMatrix4fv(uViewP,false,viewP); gl.uniform1f(uTimeP,time); gl.bindVertexArray(partVAO); gl.drawArrays(gl.POINTS,0,PCOUNT); gl.bindVertexArray(null); gl.useProgram(P_SOLID); gl.uniformMatrix4fv(uProjS,false,proj); gl.uniformMatrix4fv(uViewS,false,view); }
- }
- drawGizmo();
- requestAnimationFrame(render);
-}
-requestAnimationFrame(render);
+    let labels = new Array(data.length).fill(0);
+    for(let iter=0;iter<maxIter;iter++) {
+      for(let i=0;i<data.length;i++) {
+        let bestDist = Infinity;
+        let bestC = 0;
+        for(let c=0;c<k;c++) {
+          let dist = 0;
+          for(let d=0;d<data[i].length;d++) {
+            dist += (data[i][d]-centers[c][d])**2;
+          }
+          if(dist<bestDist){
+            bestDist=dist;
+            bestC=c;
+          }
+        }
+        labels[i] = bestC;
+      }
+      const sums = Array(k).fill(null).map(()=>Array(data[0].length).fill(0));
+      const counts = Array(k).fill(0);
+      for(let i=0;i<data.length;i++) {
+        const c = labels[i];
+        counts[c]++;
+        for(let d=0;d<data[0].length;d++) {
+          sums[c][d]+=data[i][d];
+        }
+      }
+      for(let c=0;c<k;c++){
+        if(counts[c]>0) {
+          for(let d=0;d<data[0].length;d++) {
+            centers[c][d] = sums[c][d]/counts[c];
+          }
+        }
+      }
+    }
+    return {centers, labels};
+  }
 
-// gizmo draw overlay
-function drawGizmo(){
- const ctx=gizmoCanvas.getContext('2d'); ctx.clearRect(0,0,gizmoCanvas.width,gizmoCanvas.height);
- if(!selected || selected.type==='plane') return;
- const eye=cameraPos(), view=lookAt(eye,[0,0,0],[0,1,0]), proj=perspective(Math.PI/4,canvas.width/canvas.height,0.1,200);
- const world=[selected.pos[0],selected.pos[1],selected.pos[2],1], clip=mul4(multiply(proj,view),world); if(Math.abs(clip[3])<1e-6) return;
- const ndc=[clip[0]/clip[3], clip[1]/clip[3]]; const sx=(ndc[0]*0.5+0.5)*gizmoCanvas.width, sy=( -ndc[1]*0.5+0.5)*gizmoCanvas.height;
- const xdir = screenDirForAxis('x'); const zdir = screenDirForAxis('z');
- ctx.lineWidth=6; ctx.strokeStyle='rgba(255,200,120,0.95)'; ctx.fillStyle='rgba(255,200,120,0.95)';
- ctx.beginPath(); ctx.moveTo(sx - xdir[0]*40, sy - xdir[1]*40); ctx.lineTo(sx + xdir[0]*40, sy + xdir[1]*40); ctx.stroke();
- ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + xdir[0]*40, sy + xdir[1]*40); ctx.lineTo(sx + xdir[0]*30 - xdir[1]*8, sy + xdir[1]*30 - xdir[0]*8); ctx.lineTo(sx + xdir[0]*30 + xdir[1]*8, sy + xdir[1]*30 + xdir[0]*8); ctx.fill();
- ctx.beginPath(); ctx.moveTo(sx - zdir[0]*40, sy - zdir[1]*40); ctx.lineTo(sx + zdir[0]*40, sy + zdir[1]*40); ctx.stroke();
- ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + zdir[0]*-40, sy + zdir[1]*-40); ctx.lineTo(sx + zdir[0]*-30 - zdir[1]*8, sy + zdir[1]*-30 - zdir[0]*8); ctx.lineTo(sx + zdir[0]*-30 + zdir[1]*8, sy + zdir[1]*-30 + zdir[0]*8); ctx.fill();
-}
+  function detectOutliers(labels) {
+    const counts = {};
+    labels.forEach(l => { counts[l] = (counts[l] || 0) + 1; });
+    const outliers = [];
+    for(let i=0;i<labels.length;i++) {
+      if(counts[labels[i]] < 3) outliers.push(i);
+    }
+    return outliers;
+  }
 
-// init
-refreshList(); selected=scene[0]; updateTransforms();
+  // -------- Protocolo avanzado de descubrimiento --------
 
+  class DiscoveryProtocol {
+    constructor() {
+      this.patterns = [];
+      this.minRepetitions = 3;
+      this.similarityThreshold = 0.12;
+      this.distanceNoveltyThreshold = 0.7;
+      this.noveltyScoreThreshold = 0.7;
+      this.globalFeaturesStats = {mean: null, std: null};
+    }
+
+    distance(a,b) {
+      let sum = 0;
+      for(let i=0; i<a.length; i++) sum += (a[i]-b[i])**2;
+      return Math.sqrt(sum);
+    }
+
+    registerPattern(params, features) {
+      this.patterns.push({params, features});
+    }
+
+    groupSimilarPatterns() {
+      const groups = [];
+      for(const p of this.patterns) {
+        let foundGroup = false;
+        for(const g of groups) {
+          if(this.distance(p.params, g[0].params) < this.similarityThreshold) {
+            g.push(p);
+            foundGroup = true;
+            break;
+          }
+        }
+        if(!foundGroup) groups.push([p]);
+      }
+      return groups;
+    }
+
+    meanStd(arr) {
+      const n = arr.length;
+      const mean = arr.reduce((a,b)=>a+b,0)/n;
+      const variance = arr.reduce((a,b)=>a+(b-mean)**2,0)/n;
+      return [mean, Math.sqrt(variance)];
+    }
+
+    tTest(groupFeatures, globalMean, globalStd) {
+      const n = groupFeatures.length;
+      if(n < 2) return 1;
+      const meanGroup = groupFeatures.reduce((a,b)=>a+b,0)/n;
+      const se = globalStd/Math.sqrt(n);
+      const t = Math.abs(meanGroup - globalMean) / se;
+      return (t>2) ? 0.01 : 1;
+    }
+
+    updateGlobalStats(allFeatures) {
+      const n = allFeatures.length;
+      if(n===0) return;
+      const dims = allFeatures[0].length;
+      const mean = new Array(dims).fill(0);
+      const variance = new Array(dims).fill(0);
+      for(let d=0; d<dims; d++){
+        for(let i=0;i<n;i++) mean[d]+=allFeatures[i][d];
+        mean[d]/=n;
+        for(let i=0;i<n;i++) variance[d]+=(allFeatures[i][d]-mean[d])**2;
+        variance[d]/=n;
+      }
+      const std = variance.map(Math.sqrt);
+      this.globalFeaturesStats.mean = mean;
+      this.globalFeaturesStats.std = std;
+    }
+
+    evaluateNovelty() {
+      if(this.patterns.length < this.minRepetitions) return {alert:false};
+      const groups = this.groupSimilarPatterns();
+      for(const g of groups) {
+        if(g.length < this.minRepetitions) continue;
+
+        // Evaluamos solo la primer feature (maxEnergy) por simplicidad
+        const featuresArr = g.map(p => p.features[0]);
+        const globalMean = this.globalFeaturesStats.mean ? this.globalFeaturesStats.mean[0] : 0;
+        const globalStd = this.globalFeaturesStats.std ? this.globalFeaturesStats.std[0] : 1;
+        const pValue = this.tTest(featuresArr, globalMean, globalStd);
+        if(pValue > 0.05) continue;
+
+        // Distancia mínima a otros grupos (seguridad)
+        let minDist = Infinity;
+        for(const otherGroup of groups) {
+          if(otherGroup === g) continue;
+          const dist = this.distance(g[0].features, otherGroup[0].features);
+          if(dist < minDist) minDist = dist;
+        }
+        if(minDist < this.distanceNoveltyThreshold) continue;
+
+        const persistNorm = Math.min(1, g.length / 10);
+        const distNorm = Math.min(1, minDist / 2);
+        const noveltyScore = 0.4 * persistNorm + 0.4 * (1-pValue) + 0.2 * distNorm;
+
+        if(noveltyScore > this.noveltyScoreThreshold) {
+          return {alert:true, noveltyScore, group:g};
+        }
+      }
+      return {alert:false};
+    }
+  }
+
+  // -------- Variables globales y setup --------
+  const discoveryProtocol = new DiscoveryProtocol();
+  let simulationData = [];
+  let currentSimulationIndex = 0;
+
+  // Genera todas combinaciones de parámetros
+  function generateParamCombinations(grid) {
+    const keys = Object.keys(grid);
+    const combos = [];
+
+    function backtrack(i, acc) {
+      if(i===keys.length) {
+        combos.push(Object.values(acc));
+        return;
+      }
+      const key = keys[i];
+      for(const val of grid[key]) {
+        acc[key] = val;
+        backtrack(i+1, acc);
+      }
+    }
+    backtrack(0,{});
+    return combos;
+  }
+
+  const allParamCombinations = generateParamCombinations(paramGrid);
+  const totalSims = allParamCombinations.length * seedsCount;
+  totalSimsSpan.textContent = totalSims;
+
+  // Simulación completa con parámetros y seed
+  async function runSimulation(params, seed) {
+    const [alpha, beta, kappa, Uth, dr] = params;
+    const cfg = {
+      N, alpha, beta, kappa, Uth, dr,
+      a: 0.4, thetaTot: 20 * Math.PI,
+      gamma: 0.01, eta: 0.01,
+      jumps: 0
+    };
+    initArrays(cfg, seed);
+    const dt = 0.1;
+    let maxEnergy = 0;
+    let focalDuration = 0;
+
+    for(let t=0; t<stepsPerSim; t++) {
+      step(cfg, dt);
+      // Energia max
+      const maxU = Math.max(...U.map(x => Math.abs(x)));
+      if(maxU > maxEnergy) maxEnergy = maxU;
+    }
+
+    // Simulamos duración focalizada (ejemplo simple)
+    focalDuration = stepsPerSim / 10;
+
+    return {
+      params,
+      seed,
+      U: Array.from(U),
+      maxEnergy,
+      focalDuration,
+      jumps: cfg.jumps,
+      features: []
+    };
+  }
+
+  function logAlert(text) {
+    const d = new Date();
+    alertsDiv.innerHTML += `<div class="alert">[${d.toLocaleTimeString()}] ${text}</div>`;
+    alertsDiv.scrollTop = alertsDiv.scrollHeight;
+    discoveryAlertsCount++;
+    discAlertsCountSpan.textContent = discoveryAlertsCount;
+  }
+
+  function drawSimulation() {
+    ctx.clearRect(0,0,W,H);
+    ctx.beginPath();
+    ctx.strokeStyle = '#66ccee';
+    for(let j=0;j<N;j++) {
+      const x = (j/(N-1)) * W;
+      const y = H/2 - U[j]*200;
+      if(j===0) ctx.moveTo(x,y);
+      else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+
+  async function runAllSimulations() {
+    isRunning = true;
+    btnStart.disabled = true;
+    btnStop.disabled = false;
+    simulationData = [];
+    discoveryAlertsCount = 0;
+    currentSimulationIndex = 0;
+    discoveryProtocol.patterns = [];
+    discoveryProtocol.globalFeaturesStats = {mean: null, std: null};
+
+    for(let i=0; i<allParamCombinations.length && isRunning; i++) {
+      for(let seed=1; seed<=seedsCount && isRunning; seed++) {
+        currentSimulationIndex++;
+        currentSimSpan.textContent = currentSimulationIndex;
+
+        const simResult = await runSimulation(allParamCombinations[i], seed);
+        simulationData.push(simResult);
+
+        // Extraer features
+        const features = extractFeatures(simResult);
+        simResult.features = features;
+
+        // Registrar patrón raro si es outlier
+        if(simulationData.length >= 20) {
+          const allFeatures = simulationData.map(s => s.features);
+          const kmres = kmeans(allFeatures, 3);
+          const outliersIdx = detectOutliers(kmres.labels);
+
+          // Registrar patrones outliers
+          for(const idx of outliersIdx) {
+            const s = simulationData[idx];
+            discoveryProtocol.registerPattern(s.params, s.features);
+          }
+
+          // Actualizar stats globales y evaluar descubrimiento
+          discoveryProtocol.updateGlobalStats(allFeatures);
+          const evaluation = discoveryProtocol.evaluateNovelty();
+
+          // Si es descubrimiento, lanzar alerta definitiva
+          if(evaluation.alert) {
+            const score = evaluation.noveltyScore.toFixed(3);
+            logAlert(`¡DESCUBRIMIENTO CIENTÍFICO DETECTADO! Score: ${score} | Parámetros: α=${evaluation.group[0].params[0]}, β=${evaluation.group[0].params[1]}, κ=${evaluation.group[0].params[2]}, Uth=${evaluation.group[0].params[3]}, dr=${evaluation.group[0].params[4]}`);
+          }
+        }
+
+        // Dibujar última simulación
+        for(let j=0;j<N;j++) {
+          U[j] = simResult.U[j];
+        }
+        drawSimulation();
+      }
+    }
+    btnStart.disabled = false;
+    btnStop.disabled = true;
+    isRunning = false;
+  }
+
+  btnStart.onclick = () => {
+    if(isRunning) return;
+    runAllSimulations();
+  };
+  btnStop.onclick = () => {
+    isRunning = false;
+  };
+})();
 </script>
 </body>
 </html>
