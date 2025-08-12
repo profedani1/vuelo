@@ -1,252 +1,141 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8" />
+<meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Protótipo Automático: Espiral Acoplada con Alertas</title>
+<title>Protótipo Automático con ML: Detección de Patrones Emergentes</title>
 <style>
-  :root {
-    --bg:#0f1724;
-    --card:#0b1220;
-    --accent:#7dd3fc;
-    --alert:#f87171;
-    --muted:#94a3b8;
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin:0; background:#0a1226; color:#cfd9e9;
+    display: flex; flex-direction: column; height: 100vh;
   }
-  html,body {
-    height:100%;
-    margin:0;
-    font-family:Inter,system-ui,Segoe UI,Arial;
-    background:var(--bg);
-    color:#e6eef6;
+  header {
+    background:#061126; padding: 0.5rem 1rem; font-weight: bold; font-size: 1.2rem;
   }
-  .app {
-    display:grid;
-    grid-template-columns:420px 1fr;
-    gap:18px;
-    height:100vh;
-    padding:18px;
+  main {
+    display:flex; flex:1; overflow:hidden;
   }
-  .panel {
-    background:linear-gradient(180deg,#071023 0%, #071229 60%);
-    border-radius:12px;
-    padding:14px;
-    box-shadow:0 6px 18px rgba(2,6,23,.6);
-    overflow:auto;
-    display:flex;
-    flex-direction: column;
+  #leftPanel {
+    width:350px; background:#0d1839; padding:1rem; overflow-y:auto;
+    box-shadow: inset -3px 0 6px #021026;
   }
-  h1 {
-    font-size:18px;
-    margin:0 0 8px;
+  #rightPanel {
+    flex:1; display:flex; flex-direction: column;
   }
-  label {
-    display:block;
-    margin-top:8px;
-    font-size:13px;
-    color:var(--muted);
-  }
-  .row {
-    display:flex;
-    gap:8px;
-    align-items:center;
-    flex-wrap: wrap;
-  }
-  input[type=range] {
-    width:100%;
-  }
-  button {
-    background:var(--accent);
-    border:none;
-    color:#042031;
-    padding:8px 10px;
-    border-radius:8px;
-    cursor:pointer;
-    user-select:none;
-  }
-  button:disabled {
-    background:#374151;
-    cursor: not-allowed;
-  }
-  .small {
-    font-size:12px;
-    color:var(--muted);
+  #canvasContainer {
+    flex:1; background:#07152f;
+    display:flex; justify-content:center; align-items:center;
   }
   canvas {
-    width:100%;
-    height:100%;
-    display:block;
-    background:linear-gradient(180deg,#071226, #001525);
-    border-radius:12px;
+    background:#0a1a3c; border-radius:12px;
+    max-width: 100%; max-height: 100%;
   }
-  .stats {
-    display:flex;
-    gap:8px;
-    flex-wrap:wrap;
-    margin-top:8px;
+  button {
+    background:#2a62bf; border:none; color:#dde6f5;
+    padding:0.5rem 1rem; margin-top:1rem;
+    cursor:pointer; border-radius:8px;
+  }
+  button:disabled {
+    background:#4c7dc9aa;
+    cursor: not-allowed;
+  }
+  h2 {
+    margin-top: 0;
+  }
+  .alert {
+    background:#f45c5c; padding:0.5rem; border-radius:6px; margin-top:0.5rem; font-weight: bold;
+    color:#fff;
+  }
+  .log {
+    background:#07172f; border-radius:8px; padding:8px; height: 180px; overflow-y: auto; font-family: monospace; font-size: 12px;
+    margin-top: 0.5rem;
   }
   .stat {
-    background:#02111a;
-    padding:8px;
-    border-radius:8px;
-    font-size:13px;
-    min-width:120px;
+    margin-top: 0.4rem;
   }
-  #alertLog {
-    margin-top:10px;
-    background:#1a1f2d;
-    border-radius:8px;
-    padding:8px;
-    height:120px;
-    overflow-y: auto;
-    font-family: monospace;
-    font-size:12px;
-    color:var(--alert);
-    user-select: text;
-  }
-  footer {
-    font-size:12px;
-    color:var(--muted);
-    margin-top:12px;
-  }
-  .flex-grow {
-    flex-grow: 1;
+  #clustersPlot {
+    margin-top: 1rem;
+    height: 180px;
+    background: #0b1b3a;
+    border-radius: 10px;
+    padding: 6px;
+    font-size: 12px;
+    overflow-x: auto;
+    white-space: nowrap;
   }
 </style>
 </head>
 <body>
-<div class="app">
-  <div class="panel" style="max-height:calc(100vh - 36px);">
-    <h1>Protótipo Automático: Espiral Acoplada con Alertas</h1>
-    <div class="small">Este prototipo ejecuta simulaciones automáticas barriendo parámetros, detecta eventos interesantes y genera alertas para análisis científico.</div>
-
-    <label>Parámetros fijos</label>
-    <div class="row">
-      <label style="flex-basis: 100%;">N nodos (resolución)</label>
-      <input id="N" type="range" min="64" max="512" step="32" value="256" />
-      <div id="Nval" class="small">256</div>
+<header>Protótipo Automático + ML: Detección de Patrones Emergentes</header>
+<main>
+  <section id="leftPanel">
+    <h2>Controles</h2>
+    <div>
+      <button id="btnStart">Iniciar Exploración Automática</button>
+      <button id="btnStop" disabled>Detener</button>
+      <button id="btnExport" disabled>Exportar Datos CSV</button>
     </div>
 
-    <label>Exploración automática</label>
-    <div class="row" style="gap:6px; flex-wrap: nowrap;">
-      <button id="btnStartAuto">Iniciar barrido automático</button>
-      <button id="btnStopAuto" disabled>Detener</button>
-      <button id="btnExportLogs" disabled>Exportar logs CSV</button>
+    <h3>Estado</h3>
+    <div class="stat">Simulaciones totales: <span id="totalSims">0</span></div>
+    <div class="stat">Simulación actual: <span id="currentSim">0</span></div>
+    <div class="stat">Alertas ML: <span id="mlAlertsCount">0</span></div>
+
+    <h3>Alertas Detectadas</h3>
+    <div id="alerts" class="log" aria-live="polite" aria-atomic="true"></div>
+
+    <h3>Clusters y Análisis</h3>
+    <div id="clustersPlot">(Gráfico de clusters aparecerá aquí)</div>
+  </section>
+
+  <section id="rightPanel">
+    <div id="canvasContainer">
+      <canvas id="canvas" width="600" height="600"></canvas>
     </div>
-
-    <label>Configuración exploración</label>
-    <div class="row" style="flex-wrap: wrap;">
-      <label style="flex-basis: 50%;">Cantidad semillas</label>
-      <input id="numSeeds" type="number" min="1" max="20" value="3" style="width: 80px" />
-      <label style="flex-basis: 50%;">Sim steps por prueba</label>
-      <input id="stepsPerSim" type="number" min="50" max="2000" value="500" style="width: 80px" />
-    </div>
-
-    <label>Rangos de parámetros para barrido</label>
-    <div class="row" style="flex-wrap: wrap; gap:10px;">
-      <label>α (perm.←mech)</label>
-      <input id="alphaRange" type="text" value="0,0.5,1,1.5,2" style="flex-grow:1" />
-      <label>β (perm.←|U|²)</label>
-      <input id="betaRange" type="text" value="0,0.05,0.1,0.2" style="flex-grow:1" />
-      <label>κ (tensión←U)</label>
-      <input id="kappaRange" type="text" value="0,0.05,0.1,0.15" style="flex-grow:1" />
-      <label>Umbral U_th</label>
-      <input id="UthRange" type="text" value="0.05,0.08,0.12" style="flex-grow:1" />
-      <label>Salto Δr</label>
-      <input id="drRange" type="text" value="0.01,0.03,0.05" style="flex-grow:1" />
-    </div>
-
-    <label>Indicadores y alertas (configurables)</label>
-    <div class="row" style="flex-wrap: wrap; gap:10px;">
-      <label>Energía máxima local > </label>
-      <input id="alertEnergyMax" type="number" min="0.01" max="10" step="0.01" value="0.15" style="width:80px" />
-      <label>Duración mínima (steps) focalización</label>
-      <input id="alertDuration" type="number" min="10" max="1000" value="100" style="width:80px" />
-      <label>Saltos mínimos en sim</label>
-      <input id="alertMinJumps" type="number" min="0" max="100" value="3" style="width:80px" />
-    </div>
-
-    <label>Estado actual de exploración</label>
-    <div class="stats">
-      <div class="stat">Pruebas totales: <span id="totalTests">0</span></div>
-      <div class="stat">Prueba actual: <span id="currentTest">0</span></div>
-      <div class="stat">Saltos detectados: <span id="totalJumps">0</span></div>
-      <div class="stat">Alertas generadas: <span id="alertsCount">0</span></div>
-    </div>
-
-    <label>Registro de alertas</label>
-    <pre id="alertLog" aria-live="polite"></pre>
-
-    <footer>Prototipo avanzado para descubrir fenómenos físicos emergentes con simulaciones automáticas y alertas inteligentes.</footer>
-  </div>
-
-  <div class="panel flex-grow">
-    <canvas id="cv"></canvas>
-  </div>
-</div>
+  </section>
+</main>
 
 <script>
 (() => {
-  const cv = document.getElementById('cv');
-  const ctx = cv.getContext('2d');
-  let W=0,H=0;
-  function resize(){
-    W=cv.width=cv.clientWidth;
-    H=cv.height=window.innerHeight-36;
-  }
-  window.addEventListener('resize',resize);
-  resize();
-
-  // UI elements
-  const NSlider = document.getElementById('N');
-  const Nval = document.getElementById('Nval');
-  const btnStartAuto = document.getElementById('btnStartAuto');
-  const btnStopAuto = document.getElementById('btnStopAuto');
-  const btnExportLogs = document.getElementById('btnExportLogs');
-  const alertLog = document.getElementById('alertLog');
-  const currentTestElem = document.getElementById('currentTest');
-  const totalTestsElem = document.getElementById('totalTests');
-  const totalJumpsElem = document.getElementById('totalJumps');
-  const alertsCountElem = document.getElementById('alertsCount');
-
-  // Param inputs for sweep
-  const numSeedsInput = document.getElementById('numSeeds');
-  const stepsPerSimInput = document.getElementById('stepsPerSim');
-  const alphaRangeInput = document.getElementById('alphaRange');
-  const betaRangeInput = document.getElementById('betaRange');
-  const kappaRangeInput = document.getElementById('kappaRange');
-  const UthRangeInput = document.getElementById('UthRange');
-  const drRangeInput = document.getElementById('drRange');
-
-  // Alert thresholds
-  const alertEnergyMaxInput = document.getElementById('alertEnergyMax');
-  const alertDurationInput = document.getElementById('alertDuration');
-  const alertMinJumpsInput = document.getElementById('alertMinJumps');
-
-  let cfg = {
-    N: parseInt(NSlider.value),
-    dt: 0.002,
-    alpha: 0.2,
-    beta: 0.05,
-    kappa: 0.12,
-    gamma: 0.02,
-    eta: 0.02,
-    Uth: 0.08,
-    dr: 0.03,
-    a: 1,
-    thetaTot: 16
+  // --- Parámetros y Configuración ---
+  const paramGrid = {
+    alpha: [0, 0.5, 1, 1.5, 2],
+    beta: [0, 0.05, 0.1, 0.2],
+    kappa: [0, 0.05, 0.1, 0.15],
+    Uth: [0.05, 0.08, 0.12],
+    dr: [0.01, 0.03, 0.05]
   };
+  const seedsCount = 3;      // cantidad de seeds (variación aleatoria)
+  const stepsPerSim = 500;   // pasos de simulación por corrida
+  const N = 256;             // nodos de la simulación
 
-  NSlider.addEventListener('input', () => {
-    cfg.N = parseInt(NSlider.value);
-    Nval.textContent = NSlider.value;
-  });
+  // Estado UI
+  const btnStart = document.getElementById('btnStart');
+  const btnStop = document.getElementById('btnStop');
+  const btnExport = document.getElementById('btnExport');
+  const totalSimsSpan = document.getElementById('totalSims');
+  const currentSimSpan = document.getElementById('currentSim');
+  const mlAlertsCountSpan = document.getElementById('mlAlertsCount');
+  const alertsDiv = document.getElementById('alerts');
+  const clustersPlot = document.getElementById('clustersPlot');
 
-  // Simulation state and arrays
+  // Canvas y contexto
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+
+  // Variables de simulación
   let s, U, Uprev, u, uprev, v, r, theta;
-  let jumps = 0;
+  let isRunning = false;
 
-  function initArrays() {
-    const N = cfg.N;
+  // Logs y datos para ML
+  let logs = [];
+  let mlAlertsCount = 0;
+
+  // --- Funciones básicas simulación ---
+  function initArrays(cfg, seed) {
     s = new Float64Array(N);
     U = new Float64Array(N);
     Uprev = new Float64Array(N);
@@ -255,42 +144,33 @@
     v = new Float64Array(N);
     r = new Float64Array(N);
     theta = new Float64Array(N);
-    const ds = 1.0;
     for(let j=0; j<N; j++) {
-      s[j] = j*ds;
-      U[j] = 0; Uprev[j] = 0;
-      u[j] = 0; uprev[j] = 0; v[j] = 0;
-    }
-    // geometry initial: r=a*theta with theta spacing
-    for(let j=0; j<N; j++) {
+      s[j] = j;
+      U[j] = (Math.random()-0.5)*0.02*seed;
+      Uprev[j] = U[j];
+      u[j] = 0;
+      uprev[j] = 0;
+      v[j] = 0;
       theta[j] = (j/(N-1))*cfg.thetaTot;
       r[j] = cfg.a*theta[j];
     }
-    jumps = 0;
-    totalJumpsElem.textContent = jumps;
   }
 
-  initArrays();
-
-  // Gradients and laplacian helpers
+  // Operadores discretos
   function grad(arr,j){
-    const N=arr.length;
-    if(j<=0) return (arr[1]-arr[0]);
-    if(j>=N-1) return (arr[N-1]-arr[N-2]);
+    if(j<=0) return arr[1]-arr[0];
+    if(j>=arr.length-1) return arr[arr.length-1]-arr[arr.length-2];
     return (arr[j+1]-arr[j-1])/2;
   }
-
   function lap(arr,j){
-    const N=arr.length;
-    if(j<=0) return (arr[1]-2*arr[0]+arr[0]);
-    if(j>=N-1) return (arr[N-1]-2*arr[N-2]+arr[N-1]);
-    return (arr[j+1]-2*arr[j]+arr[j-1]);
+    if(j<=0) return arr[1]-2*arr[0]+arr[0];
+    if(j>=arr.length-1) return arr[arr.length-1]-2*arr[arr.length-2]+arr[arr.length-1];
+    return arr[j+1]-2*arr[j]+arr[j-1];
   }
 
-  // Step function for the coupled system
-  function step(dt){
+  // Simulación por paso
+  function step(cfg, dt){
     const N = cfg.N;
-    // compute eps_r and c
     const eps = new Float64Array(N);
     const c = new Float64Array(N);
     for(let j=0;j<N;j++) {
@@ -298,54 +178,166 @@
       eps[j] = 1.0 + cfg.alpha*divu + cfg.beta*U[j]*U[j];
       c[j] = 1/Math.sqrt(eps[j]);
     }
-    // compute new U using finite difference in time and space
     const newU = new Float64Array(N);
     for(let j=1;j<N-1;j++) {
       const lapU = lap(U,j);
-      const divc = (c[j+1]-c[j-1])/2;
       const dUd = (U[j] - Uprev[j])/dt;
-      newU[j] =
-        2*U[j] - Uprev[j] +
-        dt*dt*( c[j]*c[j]*lapU - 2*cfg.gamma*dUd )
-        - dt*dt*cfg.kappa*U[j];
+      newU[j] = 2*U[j] - Uprev[j] + dt*dt*(c[j]*c[j]*lapU - 2*cfg.gamma*dUd) - dt*dt*cfg.kappa*U[j];
     }
-    // boundary fixed zero
     newU[0] = 0;
     newU[N-1] = 0;
 
-    // detect jumps
     for(let j=1;j<N-1;j++) {
-      if(Math.abs(newU[j]-U[j]) > cfg.Uth) {
-        jumps++;
-      }
+      if(Math.abs(newU[j]-U[j]) > cfg.Uth) cfg.jumps++;
     }
-    totalJumpsElem.textContent = jumps;
 
-    // update states
     for(let j=0;j<N;j++) {
       Uprev[j] = U[j];
       U[j] = newU[j];
     }
 
-    // simple damping on u
+    // Actualizar u con ecuación acoplada simplificada
     for(let j=1;j<N-1;j++) {
       const lapu = lap(u,j);
       const T = U[j]*U[j];
-      const sigma = 0.1;
       const dtt_u = lapu + T;
-      uprev[j] = u[j];
       u[j] += dt*dt*dtt_u - dt*cfg.eta*u[j];
     }
   }
 
-  // Visualization
-  function draw(){
+  // Extraer características para ML
+  function extractFeatures(log){
+    // Feature vector: [maxEnergy, focalDuration, jumps, entropy]
+    // Entropía simple: -sum(p*log(p)) con p normalizado de |U|
+    const Uabs = log.U.map(x => Math.abs(x));
+    const maxEnergy = Math.max(...Uabs);
+    const focalDuration = log.focalDuration;
+    const jumps = log.jumps;
+
+    // Normalizar para prob
+    const sumU = Uabs.reduce((a,b)=>a+b,0);
+    const p = Uabs.map(x=>x/sumU);
+    let entropy = 0;
+    for(let v of p){
+      if(v>0) entropy -= v*Math.log(v);
+    }
+
+    return [maxEnergy, focalDuration, jumps, entropy];
+  }
+
+  // K-means simple
+  function kmeans(data, k, maxIter=50) {
+    // Init random centers
+    const centers = [];
+    for(let i=0;i<k;i++) {
+      centers.push(data[Math.floor(Math.random()*data.length)].slice());
+    }
+
+    let labels = new Array(data.length).fill(0);
+    for(let iter=0;iter<maxIter;iter++) {
+      // Assign
+      for(let i=0;i<data.length;i++) {
+        let bestDist = Infinity;
+        let bestC = 0;
+        for(let c=0;c<k;c++) {
+          let dist = 0;
+          for(let d=0;d<data[i].length;d++) {
+            dist += (data[i][d]-centers[c][d])**2;
+          }
+          if(dist<bestDist){
+            bestDist=dist;
+            bestC=c;
+          }
+        }
+        labels[i] = bestC;
+      }
+      // Update centers
+      const sums = Array(k).fill(null).map(()=>Array(data[0].length).fill(0));
+      const counts = Array(k).fill(0);
+      for(let i=0;i<data.length;i++) {
+        const c = labels[i];
+        counts[c]++;
+        for(let d=0;d<data[0].length;d++) {
+          sums[c][d]+=data[i][d];
+        }
+      }
+      for(let c=0;c<k;c++){
+        if(counts[c]>0){
+          for(let d=0;d<data[0].length;d++){
+            centers[c][d] = sums[c][d]/counts[c];
+          }
+        }
+      }
+    }
+    return {centers, labels};
+  }
+
+  // Detectar outliers por cluster pequeño (<= umbral)
+  function detectOutliers(labels, minClusterSize=2){
+    const counts = {};
+    for(let l of labels){
+      counts[l] = (counts[l]||0)+1;
+    }
+    const outliersIdx = [];
+    labels.forEach((lab,i)=>{
+      if(counts[lab]<=minClusterSize) outliersIdx.push(i);
+    });
+    return outliersIdx;
+  }
+
+  // Variables para simulación
+  let cfg = {
+    N,
+    alpha: 0,
+    beta: 0,
+    kappa: 0,
+    gamma: 0.02,
+    eta: 0.02,
+    Uth: 0.08,
+    dr: 0.03,
+    a: 1,
+    thetaTot: 16,
+    jumps: 0
+  };
+
+  // Iniciar simulación para parámetros y seed dados
+  async function runSimulation(params, seed) {
+    [cfg.alpha, cfg.beta, cfg.kappa, cfg.Uth, cfg.dr] = params;
+    cfg.jumps = 0;
+    initArrays(cfg, seed);
+
+    let focalDuration = 0;
+    let maxEnergy = 0;
+
+    for(let i=0;i<stepsPerSim;i++){
+      step(cfg, 0.002);
+
+      const currentMax = Math.max(...U.map(x=>Math.abs(x)));
+      if(currentMax>maxEnergy) maxEnergy=currentMax;
+
+      if(currentMax>cfg.Uth) focalDuration++;
+      else if(focalDuration>0) focalDuration=0;
+
+      if(i%100===0) await new Promise(r=>setTimeout(r,0)); // no bloquear UI
+    }
+
+    return {
+      params,
+      seed,
+      maxEnergy,
+      focalDuration,
+      jumps: cfg.jumps,
+      U: Array.from(U),
+    };
+  }
+
+  // Función para dibujar la espiral con deformaciones
+  function drawSimulation() {
     ctx.clearRect(0,0,W,H);
-    const N = cfg.N;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.8;
     ctx.strokeStyle = 'cyan';
     ctx.beginPath();
-    for(let j=0;j<N;j++) {
+    for(let j=0;j<N;j++){
       const angle = theta[j];
       const rad = r[j] + 20*U[j];
       const x = W/2 + rad*Math.cos(angle);
@@ -355,10 +347,10 @@
     }
     ctx.stroke();
 
-    // Draw jumps as red points
+    // puntos saltos en rojo
     ctx.fillStyle = 'red';
     for(let j=1;j<N-1;j++) {
-      if(Math.abs(U[j]-Uprev[j]) > cfg.Uth) {
+      if(Math.abs(U[j]-Uprev[j]) > cfg.Uth){
         const angle = theta[j];
         const rad = r[j] + 20*U[j];
         const x = W/2 + rad*Math.cos(angle);
@@ -370,191 +362,132 @@
     }
   }
 
-  // ==== Exploración automática ====
+  // Variables para el loop principal
+  let currentSimulationIndex = 0;
+  let allParamCombinations = [];
+  let simulationData = [];
 
-  // Util para parsear rangos: "0,0.1,0.2" => [0,0.1,0.2]
-  function parseRange(str) {
-    return str.split(',').map(x=>parseFloat(x.trim())).filter(x=>!isNaN(x));
-  }
-
-  // Generar todas las combinaciones de parámetros
-  function cartesian(arrays) {
+  // Generar combinaciones cartesianas
+  function cartesian(arrays){
     if(arrays.length===0) return [[]];
     const rest = cartesian(arrays.slice(1));
     const result = [];
-    for(const v of arrays[0]) {
-      for(const r of rest) {
+    for(const v of arrays[0]){
+      for(const r of rest){
         result.push([v,...r]);
       }
     }
     return result;
   }
 
-  let isRunning = false;
-  let testQueue = [];
-  let testIndex = 0;
-  let totalTestsCount = 0;
-
-  // Logs y alertas
-  let alertCount = 0;
-  let totalJumpsCount = 0;
-  let logs = [];
-
   function logAlert(text){
-    alertCount++;
-    alertsCountElem.textContent = alertCount;
+    mlAlertsCount++;
+    mlAlertsCountSpan.textContent = mlAlertsCount;
     const time = new Date().toLocaleTimeString();
-    alertLog.textContent = `${time} - ${text}\n` + alertLog.textContent;
+    alertsDiv.textContent = time + ' - ' + text + '\n' + alertsDiv.textContent;
   }
 
-  function resetStats(){
-    testIndex = 0;
-    totalTestsCount = 0;
-    alertCount = 0;
-    logs = [];
-    totalJumpsCount = 0;
-    alertsCountElem.textContent = '0';
-    totalJumpsElem.textContent = '0';
-    alertLog.textContent = '';
-    currentTestElem.textContent = '0';
-    totalTestsElem.textContent = '0';
-  }
+  // Función principal para correr todas simulaciones y analizar
+  async function runAllSimulations() {
+    btnStart.disabled = true;
+    btnStop.disabled = false;
+    btnExport.disabled = false;
 
-  async function runTest(params, seed) {
-    cfg.alpha = params[0];
-    cfg.beta = params[1];
-    cfg.kappa = params[2];
-    cfg.Uth = params[3];
-    cfg.dr = params[4];
+    allParamCombinations = cartesian([
+      paramGrid.alpha,
+      paramGrid.beta,
+      paramGrid.kappa,
+      paramGrid.Uth,
+      paramGrid.dr
+    ]);
+    const totalSimsCount = allParamCombinations.length * seedsCount;
+    totalSimsSpan.textContent = totalSimsCount;
+    currentSimSpan.textContent = '0';
+    mlAlertsCountSpan.textContent = '0';
 
-    initArrays();
-
-    // Seed the initial U with small random noise
-    for(let j=0;j<cfg.N;j++){
-      U[j] = (Math.random()-0.5)*0.02*seed;
-      Uprev[j] = U[j];
-    }
-
-    let maxEnergy = 0;
-    let jumpCount = 0;
-    let focalDuration = 0;
-
-    for(let stepi=0; stepi < parseInt(stepsPerSimInput.value); stepi++) {
-      step(cfg.dt);
-
-      // Energy local máxima
-      const energyLocal = Math.max(...U.map(x=>Math.abs(x)));
-
-      if(energyLocal > maxEnergy) maxEnergy = energyLocal;
-
-      // Detección salto focal (energía local sobre umbral)
-      if(energyLocal > cfg.Uth) {
-        focalDuration++;
-      } else if(focalDuration>0){
-        focalDuration=0;
-      }
-
-      // Contar saltos
-      for(let j=1;j<cfg.N-1;j++){
-        if(Math.abs(U[j]-Uprev[j]) > cfg.Uth){
-          jumpCount++;
-          totalJumpsCount++;
-        }
-      }
-
-      // Pequeña pausa para no bloquear UI
-      if(stepi%200===0) await new Promise(r=>setTimeout(r,0));
-    }
-
-    // Guardar logs
-    logs.push({
-      alpha: cfg.alpha,
-      beta: cfg.beta,
-      kappa: cfg.kappa,
-      Uth: cfg.Uth,
-      dr: cfg.dr,
-      maxEnergy,
-      focalDuration,
-      jumpCount,
-      seed,
-    });
-
-    totalJumpsElem.textContent = totalJumpsCount;
-
-    // Reglas alertas
-    const energyThresh = parseFloat(alertEnergyMaxInput.value);
-    const durThresh = parseInt(alertDurationInput.value);
-    const jumpThresh = parseInt(alertMinJumpsInput.value);
-
-    if(maxEnergy > energyThresh && focalDuration >= durThresh && jumpCount >= jumpThresh) {
-      logAlert(`Alerta: Parámetros α=${cfg.alpha} β=${cfg.beta} κ=${cfg.kappa} Uth=${cfg.Uth} dr=${cfg.dr} → maxEnergy=${maxEnergy.toFixed(3)}, dur=${focalDuration}, jumps=${jumpCount}, seed=${seed}`);
-    }
-  }
-
-  async function runAllTests() {
-    resetStats();
-
-    // Parse param ranges
-    const alphas = parseRange(alphaRangeInput.value);
-    const betas = parseRange(betaRangeInput.value);
-    const kappas = parseRange(kappaRangeInput.value);
-    const Uths = parseRange(UthRangeInput.value);
-    const drs = parseRange(drRangeInput.value);
-    const seedsCount = parseInt(numSeedsInput.value);
-
-    // Generate param combos cartesian product
-    const combos = cartesian([alphas, betas, kappas, Uths, drs]);
-    totalTestsCount = combos.length * seedsCount;
-    totalTestsElem.textContent = totalTestsCount;
+    simulationData = [];
+    mlAlertsCount = 0;
 
     isRunning = true;
-    btnStartAuto.disabled = true;
-    btnStopAuto.disabled = false;
-    btnExportLogs.disabled = true;
 
-    for(let i=0; i<combos.length && isRunning; i++) {
+    for(let i=0; i<allParamCombinations.length && isRunning; i++) {
       for(let seed=1; seed<=seedsCount && isRunning; seed++) {
-        currentTestElem.textContent = i*seedsCount + seed;
-        await runTest(combos[i], seed);
+        currentSimulationIndex++;
+        currentSimSpan.textContent = currentSimulationIndex;
+        const simResult = await runSimulation(allParamCombinations[i], seed);
+        simulationData.push(simResult);
+
+        // Extraer features para ML
+        const features = extractFeatures(simResult);
+        simResult.features = features;
+
+        // Mostrar simulación más reciente en canvas
+        // Actualizar estados globales para dibujo
+        for(let j=0;j<N;j++) {
+          U[j] = simResult.U[j];
+          Uprev[j] = U[j];  // para evitar saltos falsos al dibujar
+          theta[j] = (j/(N-1))*cfg.thetaTot;
+          r[j] = cfg.a*theta[j];
+        }
+        drawSimulation();
+
+        // Al final de cada simulación hacemos clustering de todos los datos
+        if(simulationData.length >= 20) {
+          // Aplicar K-means con 3 clusters (puedes cambiar k)
+          const allFeatures = simulationData.map(s => s.features);
+          const kmres = kmeans(allFeatures, 3);
+          const outliersIdx = detectOutliers(kmres.labels);
+
+          // Mostrar clusters (texto simple)
+          let clusterSummary = '';
+          for(let c=0;c<3;c++){
+            const count = kmres.labels.filter(l=>l===c).length;
+            clusterSummary += `Cluster ${c+1}: ${count} muestras &nbsp;&nbsp;&nbsp;`;
+          }
+          clustersPlot.innerHTML = clusterSummary;
+
+          // Alertar sobre outliers detectados
+          if(outliersIdx.length>0) {
+            for(let idx of outliersIdx){
+              const s = simulationData[idx];
+              logAlert(`Posible patrón raro (outlier) con parámetros α=${s.params[0]}, β=${s.params[1]}, κ=${s.params[2]}, Uth=${s.params[3]}, dr=${s.params[4]}, seed=${s.seed}`);
+            }
+          }
+        }
       }
     }
 
-    btnStartAuto.disabled = false;
-    btnStopAuto.disabled = true;
-    btnExportLogs.disabled = false;
-    isRunning = false;
+    btnStart.disabled = false;
+    btnStop.disabled = true;
   }
 
-  btnStartAuto.onclick = () => {
+  btnStart.onclick = () => {
     if(isRunning) return;
-    runAllTests();
+    currentSimulationIndex = 0;
+    runAllSimulations();
   };
-
-  btnStopAuto.onclick = () => {
+  btnStop.onclick = () => {
     isRunning = false;
   };
 
-  btnExportLogs.onclick = () => {
-    if(logs.length===0) return;
-    let csv = "alpha,beta,kappa,Uth,dr,maxEnergy,focalDuration,jumpCount,seed\n";
-    logs.forEach(l => {
-      csv += `${l.alpha},${l.beta},${l.kappa},${l.Uth},${l.dr},${l.maxEnergy},${l.focalDuration},${l.jumpCount},${l.seed}\n`;
-    });
-    const blob = new Blob([csv], {type: 'text/csv'});
+  btnExport.onclick = () => {
+    if(simulationData.length===0) return;
+    let csv = 'alpha,beta,kappa,Uth,dr,seed,maxEnergy,focalDuration,jumps,entropy\n';
+    for(const s of simulationData){
+      csv += `${s.params[0]},${s.params[1]},${s.params[2]},${s.params[3]},${s.params[4]},${s.seed},${s.maxEnergy},${s.focalDuration},${s.jumps},${extractFeatures(s)[3].toFixed(5)}\n`;
+    }
+    const blob = new Blob([csv], {type:'text/csv'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `salto_espiral_alertas_${Date.now()}.csv`;
+    a.download = `salto_espiral_ml_${Date.now()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  // Main loop solo para visualización mientras corren simulaciones
-  function animate(){
-    draw();
-    requestAnimationFrame(animate);
-  }
-  animate();
+  // Inicializar para dibujar vacío
+  initArrays(cfg,1);
+  drawSimulation();
 })();
 </script>
 </body>
