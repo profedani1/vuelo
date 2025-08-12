@@ -1,467 +1,257 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Terreno 3D con Volcán y Partículas (WebGL puro)</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Editor 3D — Completo Offline</title>
 <style>
-  body, html {
-    margin: 0; padding: 0; overflow: hidden;
-    background: #000a12;
-    height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    color: #eee;
-    font-family: monospace;
-  }
-  canvas {
-    display: block;
-    width: 100vw;
-    height: 100vh;
-    background: #00111f;
-  }
+:root{--accent:#ff8c42}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:#071018;color:#eef;font-family:system-ui,monospace}
+#app{display:flex;height:100vh}
+canvas{flex:1;cursor:grab;display:block;background:linear-gradient(#041018,#001018)}
+#panel{width:360px;padding:12px;background:rgba(6,12,20,0.95);border-left:1px solid rgba(255,255,255,0.04)}
+h1{font-size:16px;margin:0 0 6px;text-align:center}
+.btn{width:100%;padding:10px;margin:6px 0;border-radius:8px;border:0;cursor:pointer;background:#0b5;color:#001;font-weight:700}
+.btn.alt{background:#3cf;color:#002}.btn.warn{background:#ff6b6b;color:#200}
+label{font-size:13px;color:#bfe;margin-top:8px;display:block}
+.row{display:flex;gap:8px;margin-top:8px}
+.small{flex:1;padding:8px;border-radius:6px;background:#032430;border:1px solid rgba(255,255,255,0.03);color:#dff}
+.list{max-height:140px;overflow:auto;margin-top:8px;border-radius:6px;padding:6px;background:rgba(0,0,0,0.12)}
+.item{padding:8px;border-radius:6px;margin-bottom:6px;background:rgba(255,255,255,0.02);cursor:pointer}
+.item.sel{outline:2px solid var(--accent);background:rgba(255,255,255,0.04)}
+textarea{width:100%;height:100px;margin-top:8px;background:#001114;color:#7fff9b;border-radius:6px;padding:8px;border:1px solid rgba(255,255,255,0.03);font-family:monospace}
+footer{font-size:12px;opacity:0.85;margin-top:8px;text-align:center;color:#9fd}
+.kid .btn{font-size:20px;padding:14px}
+#gizmo{position:fixed;left:0;top:0;pointer-events:none}
 </style>
 </head>
 <body>
-<canvas id="glcanvas"></canvas>
+<div id="app">
+  <canvas id="gl"></canvas>
+  <div id="panel">
+    <h1>Editor 3D — Todo incluido (offline)</h1>
+    <button id="addCube" class="btn">➕ Añadir Cubo</button>
+    <button id="addSphere" class="btn alt">➕ Añadir Esfera</button>
+    <button id="addPlane" class="btn">➕ Añadir Suelo</button>
+    <button id="addFire" class="btn warn">🔥 Añadir Fuego</button>
+
+    <label>Color rápido</label>
+    <input id="colorPicker" type="color" value="#ff8c42" style="width:100%;height:36px;border-radius:6px;border:0"/>
+
+    <label>Objetos</label>
+    <div class="list" id="objectList"></div>
+
+    <div id="transforms" style="display:none">
+      <label>Pos X <input id="posX" class="small" type="range" min="-8" max="8" step="0.05"/></label>
+      <label>Pos Y <input id="posY" class="small" type="range" min="0" max="6" step="0.05"/></label>
+      <label>Pos Z <input id="posZ" class="small" type="range" min="-8" max="8" step="0.05"/></label>
+      <label>Rot Y <input id="rotY" class="small" type="range" min="0" max="360" step="1"/></label>
+      <label>Escala <input id="scale" class="small" type="range" min="0.1" max="3" step="0.01"/></label>
+      <div class="row"><button id="dup" class="small">Duplicar</button><button id="grp" class="small">Agrupar</button></div>
+      <div class="row"><button id="align" class="small">Alinear</button><button id="delete" class="small">Eliminar</button></div>
+    </div>
+
+    <label>Escena (JSON)</label>
+    <textarea id="sceneJSON" placeholder="Exportar / Pegar JSON"></textarea>
+    <div class="row"><button id="exportJSON" class="small">Descargar JSON</button><button id="loadJSON" class="small">Cargar JSON</button></div>
+    <div class="row"><button id="exportPNG" class="small">Exportar PNG</button><button id="kidMode" class="small">Modo Niño</button></div>
+    <footer>Arrastra para rotar cámara • Click+arrastra objeto para mover • Gizmo para eje X/Z</footer>
+  </div>
+</div>
+<canvas id="gizmo"></canvas>
+
 <script type="module">
+// ========== Setup & math ==========
+const canvas = document.getElementById('gl'), gizmoCanvas = document.getElementById('gizmo');
+const gl = canvas.getContext('webgl2',{antialias:true}); if(!gl){ alert('WebGL2 necesario'); throw 0; }
+function resize(){ canvas.width=(window.innerWidth-360)*devicePixelRatio; canvas.height=window.innerHeight*devicePixelRatio; canvas.style.width=(window.innerWidth-360)+'px'; canvas.style.height=window.innerHeight+'px'; gl.viewport(0,0,canvas.width,canvas.height); gizmoCanvas.width=window.innerWidth; gizmoCanvas.height=window.innerHeight; gizmoCanvas.style.width='100%'; gizmoCanvas.style.height='100%'; }
+window.addEventListener('resize',resize); resize();
+const ID = new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+const toRad = d=>d*Math.PI/180;
+const translation=(x,y,z)=>{const m=ID.slice(); m[12]=x; m[13]=y; m[14]=z; return m;}
+const scaling=(x,y,z)=>{const m=ID.slice(); m[0]=x; m[5]=y; m[10]=z; return m;}
+const rotY=a=>{const c=Math.cos(a),s=Math.sin(a); const m=ID.slice(); m[0]=c; m[2]=-s; m[8]=s; m[10]=c; return m;}
+function multiply(a,b){ const o=new Float32Array(16); for(let i=0;i<4;i++) for(let j=0;j<4;j++){ let s=0; for(let k=0;k<4;k++) s+=a[k*4+j]*b[i*4+k]; o[i*4+j]=s;} return o;}
+function perspective(f,ar,n,f2){const t=1/Math.tan(f/2), nf=1/(n-f2); const o=new Float32Array(16); o[0]=t/ar; o[5]=t; o[10]=(f2+n)*nf; o[11]=-1; o[14]=2*f2*n*nf; return o;}
+function lookAt(eye,center,up){const f=normalize([center[0]-eye[0],center[1]-eye[1],center[2]-eye[2]]); const s=normalize(cross(f,up)); const u=cross(s,f); const m=new Float32Array(16); m[0]=s[0];m[1]=u[0];m[2]=-f[0];m[3]=0; m[4]=s[1];m[5]=u[1];m[6]=-f[1];m[7]=0; m[8]=s[2];m[9]=u[2];m[10]=-f[2];m[11]=0; m[12]=-dot(s,eye);m[13]=-dot(u,eye);m[14]=dot(f,eye);m[15]=1; return m;}
+function normalize(v){const l=Math.hypot(...v)||1; return v.map(x=>x/l);} function cross(a,b){return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];} function dot(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
+function invert(m){const inv=new Float32Array(16); inv[0]=m[5]*m[10]*m[15]-m[5]*m[11]*m[14]-m[9]*m[6]*m[15]+m[9]*m[7]*m[14]+m[13]*m[6]*m[11]-m[13]*m[7]*m[10]; inv[4]=-m[4]*m[10]*m[15]+m[4]*m[11]*m[14]+m[8]*m[6]*m[15]-m[8]*m[7]*m[14]-m[12]*m[6]*m[11]+m[12]*m[7]*m[10]; inv[8]=m[4]*m[9]*m[15]-m[4]*m[11]*m[13]-m[8]*m[5]*m[15]+m[8]*m[7]*m[13]+m[12]*m[5]*m[11]-m[12]*m[7]*m[9]; inv[12]=-m[4]*m[9]*m[14]+m[4]*m[10]*m[13]+m[8]*m[5]*m[14]-m[8]*m[6]*m[13]-m[12]*m[5]*m[10]+m[12]*m[6]*m[9]; inv[1]=-m[1]*m[10]*m[15]+m[1]*m[11]*m[14]+m[9]*m[2]*m[15]-m[9]*m[3]*m[14]-m[13]*m[2]*m[11]+m[13]*m[3]*m[10]; inv[5]=m[0]*m[10]*m[15]-m[0]*m[11]*m[14]-m[8]*m[2]*m[15]+m[8]*m[3]*m[14]+m[12]*m[2]*m[11]-m[12]*m[3]*m[10]; inv[9]=-m[0]*m[9]*m[15]+m[0]*m[11]*m[13]+m[8]*m[1]*m[15]-m[8]*m[3]*m[13]-m[12]*m[1]*m[11]+m[12]*m[3]*m[9]; inv[13]=m[0]*m[9]*m[14]-m[0]*m[10]*m[13]-m[8]*m[1]*m[14]+m[8]*m[2]*m[13]+m[12]*m[1]*m[10]-m[12]*m[2]*m[9]; inv[2]=m[1]*m[6]*m[15]-m[1]*m[7]*m[14]-m[5]*m[2]*m[15]+m[5]*m[3]*m[14]+m[13]*m[2]*m[7]-m[13]*m[3]*m[6]; inv[6]=-m[0]*m[6]*m[15]+m[0]*m[7]*m[14]+m[4]*m[2]*m[15]-m[4]*m[3]*m[14]-m[12]*m[2]*m[7]+m[12]*m[3]*m[6]; inv[10]=m[0]*m[5]*m[15]-m[0]*m[7]*m[13]-m[4]*m[1]*m[15]+m[4]*m[3]*m[13]+m[12]*m[1]*m[7]-m[12]*m[3]*m[5]; inv[14]=-m[0]*m[5]*m[14]+m[0]*m[6]*m[13]+m[4]*m[1]*m[14]-m[4]*m[2]*m[13]-m[12]*m[1]*m[6]+m[12]*m[2]*m[5]; inv[3]=-m[1]*m[6]*m[11]+m[1]*m[7]*m[10]+m[5]*m[2]*m[11]-m[5]*m[3]*m[10]-m[9]*m[2]*m[7]+m[9]*m[3]*m[6]; inv[7]=m[0]*m[6]*m[11]-m[0]*m[7]*m[10]-m[4]*m[2]*m[11]+m[4]*m[3]*m[10]+m[8]*m[2]*m[7]-m[8]*m[3]*m[6]; inv[11]=-m[0]*m[5]*m[11]+m[0]*m[7]*m[9]+m[4]*m[1]*m[11]-m[4]*m[3]*m[9]-m[8]*m[1]*m[7]+m[8]*m[3]*m[5]; inv[15]=m[0]*m[5]*m[10]-m[0]*m[6]*m[9]-m[4]*m[1]*m[10]+m[4]*m[2]*m[9]+m[8]*m[1]*m[6]-m[8]*m[2]*m[5]; let det=m[0]*inv[0]+m[1]*inv[4]+m[2]*inv[8]+m[3]*inv[12]; if(!det) return ID; det=1.0/det; for(let i=0;i<16;i++) inv[i]*=det; return inv;}
+function mul4(m,v){return [ m[0]*v[0]+m[4]*v[1]+m[8]*v[2]+m[12]*v[3], m[1]*v[0]+m[5]*v[1]+m[9]*v[2]+m[13]*v[3], m[2]*v[0]+m[6]*v[1]+m[10]*v[2]+m[14]*v[3], m[3]*v[0]+m[7]*v[1]+m[11]*v[2]+m[15]*v[3] ];}
 
-const canvas = document.getElementById('glcanvas');
-const gl = canvas.getContext('webgl2');
+// ========== Shaders ==========
+const vsSolid=`#version 300 es
+in vec3 aPos;in vec3 aNor;uniform mat4 uProj,uView,uModel;out vec3 vN,vP;void main(){vec4 w=uModel*vec4(aPos,1.0);vP=w.xyz;vN=mat3(uModel)*aNor;gl_Position=uProj*uView*w;}`;
+const fsSolid=`#version 300 es
+precision highp float;in vec3 vN,vP;uniform vec3 uLight,uViewPos;uniform vec4 uColor;out vec4 o;void main(){vec3 N=normalize(vN);vec3 L=normalize(uLight);vec3 V=normalize(uViewPos-vP);vec3 R=reflect(-L,N);float d=max(dot(N,L),0.0);float s=pow(max(dot(V,R),0.0),18.0);vec3 c=0.12*uColor.rgb + d*uColor.rgb + 0.6*s*vec3(1.0);o=vec4(c,uColor.a);}`;
+const vsPart=`#version 300 es
+in vec3 aP;in float aS,aL;uniform mat4 uProj,uView;uniform float uTime;out float life;void main(){float age=mod(uTime+aL,1.0);vec3 p=aP+vec3(sin(age*50.0+aL*20.0)*0.04,age*1.2,cos(age*60.0+aL*25.0)*0.04);gl_Position=uProj*uView*vec4(p,1.0);gl_PointSize=aS*(1.0-age);life=1.0-age;}`;
+const fsPart=`#version 300 es
+precision mediump float;in float life;out vec4 o;void main(){vec2 c=gl_PointCoord-0.5;float d=length(c);float a=smoothstep(0.5,0.0,d)*life;vec3 col=mix(vec3(1.0,1.0,0.6),vec3(1.0,0.2,0.0),life);o=vec4(col,a);}`;
 
-if (!gl) {
-  alert('WebGL 2 no soportado en este navegador');
-  throw 'No WebGL2';
-}
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
-gl.viewport(0, 0, canvas.width, canvas.height);
+// compile
+function sh(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) console.log(gl.getShaderInfoLog(s)); return s;}
+function prog(vs,fs){const p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_SHADER,vs));gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(p); if(!gl.getProgramParameter(p,gl.LINK_STATUS)) console.log(gl.getProgramInfoLog(p)); return p;}
+const P_SOLID=prog(vsSolid,fsSolid), P_PART=prog(vsPart,fsPart);
 
-// --- SHADERS ---
+// ========== Geometry helpers ==========
+function makeVAO(pos,norm,ind){const vao=gl.createVertexArray();gl.bindVertexArray(vao); if(pos){const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);} if(norm){const b2=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b2);gl.bufferData(gl.ARRAY_BUFFER,norm,gl.STATIC_DRAW); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1,3,gl.FLOAT,false,0,0);} if(ind){const ib=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,ind,gl.STATIC_DRAW);} gl.bindVertexArray(null); return vao;}
 
-// Vertex shader para terreno
-const terrainVS = `#version 300 es
-precision highp float;
+// cube, sphere, plane (compact)
+function createCube(){ const p=new Float32Array([ -0.5,-0.5,0.5, 0.5,-0.5,0.5, 0.5,0.5,0.5, -0.5,-0.5,0.5, 0.5,0.5,0.5, -0.5,0.5,0.5, -0.5,-0.5,-0.5, -0.5,0.5,-0.5, 0.5,0.5,-0.5, -0.5,-0.5,-0.5, 0.5,0.5,-0.5, 0.5,-0.5,-0.5, -0.5,-0.5,-0.5, -0.5,-0.5,0.5, -0.5,0.5,0.5, -0.5,-0.5,-0.5, -0.5,0.5,0.5, -0.5,0.5,-0.5, 0.5,-0.5,-0.5, 0.5,0.5,-0.5, 0.5,0.5,0.5, 0.5,-0.5,-0.5, 0.5,0.5,0.5, 0.5,-0.5,0.5, -0.5,0.5,-0.5, -0.5,0.5,0.5, 0.5,0.5,0.5, -0.5,0.5,-0.5, 0.5,0.5,0.5, 0.5,0.5,-0.5, -0.5,-0.5,-0.5, 0.5,-0.5,-0.5, 0.5,-0.5,0.5, -0.5,-0.5,-0.5, 0.5,-0.5,0.5, -0.5,-0.5,0.5 ]); const n=new Float32Array(p.length); for(let i=0;i<p.length;i+=3){ const x=p[i],y=p[i+1],z=p[i+2],l=Math.hypot(x,y,z)||1; n[i]=x/l; n[i+1]=y/l; n[i+2]=z/l;} const ind=new Uint16Array(36); for(let i=0;i<36;i++)ind[i]=i; return {pos:p,nor:n,ind:ind,count:36}; }
+function createPlane(size=12,div=80){ const pos=[]; const step=size/div; for(let y=0;y<=div;y++) for(let x=0;x<=div;x++) pos.push(-size/2 + x*step, 0, -size/2 + y*step); const idx=[]; for(let y=0;y<div;y++) for(let x=0;x<div;x++){ const i=y*(div+1)+x; idx.push(i,i+1,i+div+1); idx.push(i+1,i+div+2,i+div+1);} return {pos:new Float32Array(pos),ind:new Uint16Array(idx),count:idx.length}; }
+function createSphere(lat=16,lon=24){ const p=[],n=[],idx=[]; for(let y=0;y<=lat;y++){ const v=y/lat; const theta=v*Math.PI; for(let x=0;x<=lon;x++){ const u=x/lon; const phi=u*2*Math.PI; const px=Math.sin(theta)*Math.cos(phi)*0.5, py=Math.cos(theta)*0.5, pz=Math.sin(theta)*Math.sin(phi)*0.5; p.push(px,py,pz); const l=Math.hypot(px,py,pz)||1; n.push(px/l,py/l,pz/l); }} for(let y=0;y<lat;y++) for(let x=0;x<lon;x++){ const a=y*(lon+1)+x, b=a+lon+1; idx.push(a,b,a+1); idx.push(b,b+1,a+1);} return {pos:new Float32Array(p),nor:new Float32Array(n),ind:new Uint16Array(idx),count:idx.length}; }
 
-in vec3 aPosition;
-in vec2 aUV;
+// build
+const cube=createCube(), cubeVAO=makeVAO(cube.pos,cube.nor,cube.ind);
+const sphere=createSphere(18,28), sphereVAO=makeVAO(sphere.pos,sphere.nor,sphere.ind);
+const plane=createPlane(12,80), planeVAO=makeVAO(plane.pos,null,plane.ind);
 
-uniform mat4 uProjection;
-uniform mat4 uView;
-uniform mat4 uModel;
-
-out vec2 vUV;
-out vec3 vNormal;
-out vec3 vPositionWorld;
-
-// Simple hash para ruido 2D
-float hash(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-}
-// Ruido interpolado (value noise)
-float noise(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  float a = hash(i);
-  float b = hash(i + vec2(1.0, 0.0));
-  float c = hash(i + vec2(0.0, 1.0));
-  float d = hash(i + vec2(1.0, 1.0));
-  vec2 u = f*f*(3.0-2.0*f);
-  return mix(a, b, u.x) + (c - a)* u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
-}
-
-void main() {
-  // Altura con ruido: escala 5 vueltas, amplitud 0.2
-  float height = noise(aUV * 5.0) * 0.2;
-
-  // Posición final con altura
-  vec3 pos = aPosition + vec3(0.0, height, 0.0);
-
-  // Normales aproximadas calculadas por diferencias
-  float hL = noise((aUV + vec2(-0.01, 0.0))*5.0)*0.2;
-  float hR = noise((aUV + vec2(0.01, 0.0))*5.0)*0.2;
-  float hD = noise((aUV + vec2(0.0, -0.01))*5.0)*0.2;
-  float hU = noise((aUV + vec2(0.0, 0.01))*5.0)*0.2;
-
-  vec3 normal = normalize(vec3(hL - hR, 2.0, hD - hU));
-
-  vNormal = normal;
-  vUV = aUV;
-  vPositionWorld = (uModel * vec4(pos, 1.0)).xyz;
-
-  gl_Position = uProjection * uView * uModel * vec4(pos, 1.0);
-}
-`;
-
-// Fragment shader para terreno
-const terrainFS = `#version 300 es
-precision highp float;
-
-in vec2 vUV;
-in vec3 vNormal;
-in vec3 vPositionWorld;
-
-uniform vec3 uCameraPos;
-
-out vec4 outColor;
-
-void main() {
-  vec3 lightDir = normalize(vec3(1.0, 1.0, 0.5));
-  float diff = max(dot(normalize(vNormal), lightDir), 0.0);
-
-  // Color base mezclado con verde según vUV.y (altura)
-  vec3 baseColor = mix(vec3(0.0,0.2,0.0), vec3(0.6,0.8,0.4), vUV.y);
-
-  // Pico volcánico central rojo-anaranjado brillante
-  float dist = distance(vUV, vec2(0.5, 0.5));
-  if(dist < 0.1) {
-    baseColor += vec3(1.5,0.4,0.1) * (0.1 - dist) * 10.0;
-  }
-
-  vec3 color = baseColor * diff;
-
-  // Niebla azulada según distancia cámara-terreno
-  float distCam = length(uCameraPos - vPositionWorld);
-  float fogAmount = smoothstep(3.0, 10.0, distCam);
-  vec3 fogColor = vec3(0.1,0.15,0.2);
-  color = mix(color, fogColor, fogAmount);
-
-  outColor = vec4(color, 1.0);
-}
-`;
-
-// Vertex shader para partículas
-const particleVS = `#version 300 es
-precision highp float;
-
-in vec3 aPosition;
-in float aPointSize;
-
-uniform mat4 uProjection;
-uniform mat4 uView;
-
-void main() {
-  gl_Position = uProjection * uView * vec4(aPosition, 1.0);
-  gl_PointSize = aPointSize;
-}
-`;
-
-// Fragment shader para partículas
-const particleFS = `#version 300 es
-precision highp float;
-
-out vec4 outColor;
-
-void main() {
-  // Gradiente circular para que el punto parezca una partícula
-  vec2 coord = gl_PointCoord - vec2(0.5);
-  float dist = length(coord);
-  float alpha = smoothstep(0.5, 0.0, dist);
-
-  vec3 color = vec3(1.0, 0.5, 0.0) * alpha; // naranja
-  outColor = vec4(color, alpha);
-}
-`;
-
-// --- FUNCIONES DE UTILIDAD ---
-
-function createShader(gl, type, source) {
-  const shader = gl.createShader(type);
-  gl.shaderSource(shader, source);
-  gl.compileShader(shader);
-  if(!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    console.error('Error compilando shader:', gl.getShaderInfoLog(shader));
-    gl.deleteShader(shader);
-    return null;
-  }
-  return shader;
-}
-
-function createProgram(gl, vsSource, fsSource) {
-  const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
-  const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
-  const program = gl.createProgram();
-  gl.attachShader(program, vs);
-  gl.attachShader(program, fs);
-  gl.linkProgram(program);
-  if(!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    console.error('Error linkeando programa:', gl.getProgramInfoLog(program));
-    return null;
-  }
-  return program;
-}
-
-// Matrices básicas (sin librerías externas)
-function createPerspectiveMatrix(fov, aspect, near, far) {
-  const f = 1 / Math.tan(fov / 2);
-  const nf = 1 / (near - far);
-  const out = new Float32Array(16);
-  out[0] = f / aspect;
-  out[5] = f;
-  out[10] = (far + near) * nf;
-  out[11] = -1;
-  out[14] = (2 * far * near) * nf;
-  return out;
-}
-function createLookAtMatrix(eye, center, up) {
-  const f = normalize(subtractVectors(center, eye));
-  const s = normalize(cross(f, up));
-  const u = cross(s, f);
-
-  const out = new Float32Array(16);
-  out[0] = s[0];
-  out[1] = u[0];
-  out[2] = -f[0];
-  out[3] = 0;
-
-  out[4] = s[1];
-  out[5] = u[1];
-  out[6] = -f[1];
-  out[7] = 0;
-
-  out[8] = s[2];
-  out[9] = u[2];
-  out[10] = -f[2];
-  out[11] = 0;
-
-  out[12] = -dot(s, eye);
-  out[13] = -dot(u, eye);
-  out[14] = dot(f, eye);
-  out[15] = 1;
-
-  return out;
-}
-function multiplyMatrices(a,b) {
-  const out = new Float32Array(16);
-  for(let i=0;i<4;++i) {
-    for(let j=0;j<4;++j) {
-      out[i*4+j] = 0.0;
-      for(let k=0;k<4;++k) {
-        out[i*4+j] += a[i*4+k]*b[k*4+j];
-      }
-    }
-  }
-  return out;
-}
-function normalize(v) {
-  const len = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
-  return [v[0]/len, v[1]/len, v[2]/len];
-}
-function subtractVectors(a,b) {
-  return [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
-}
-function cross(a,b) {
-  return [
-    a[1]*b[2] - a[2]*b[1],
-    a[2]*b[0] - a[0]*b[2],
-    a[0]*b[1] - a[1]*b[0]
-  ];
-}
-function dot(a,b) {
-  return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
-}
-
-// --- CREAR GEOMETRÍA ---
-
-// Creamos un grid plano subdividido NxN (usaremos N=50)
-function createGrid(size) {
-  const positions = [];
-  const uvs = [];
-  const indices = [];
-
-  const step = 1 / size;
-  for(let y=0; y<=size; y++) {
-    for(let x=0; x<=size; x++) {
-      // Posición XY en plano [-0.5..0.5]
-      positions.push(x*step - 0.5, 0, y*step - 0.5);
-      uvs.push(x*step, y*step);
-    }
-  }
-  // Triangulación en grid
-  for(let y=0; y<size; y++) {
-    for(let x=0; x<size; x++) {
-      const i = y*(size+1) + x;
-      indices.push(i, i+1, i+size+1);
-      indices.push(i+1, i+size+2, i+size+1);
-    }
-  }
-
-  return {
-    positions: new Float32Array(positions),
-    uvs: new Float32Array(uvs),
-    indices: new Uint16Array(indices)
-  };
-}
-
-// --- INICIALIZAR TERRRENO ---
-
-const terrainProgram = createProgram(gl, terrainVS, terrainFS);
-const terrainPosLoc = gl.getAttribLocation(terrainProgram, 'aPosition');
-const terrainUVLoc = gl.getAttribLocation(terrainProgram, 'aUV');
-
-const uProjectionLoc = gl.getUniformLocation(terrainProgram, 'uProjection');
-const uViewLoc = gl.getUniformLocation(terrainProgram, 'uView');
-const uModelLoc = gl.getUniformLocation(terrainProgram, 'uModel');
-const uCameraPosLoc = gl.getUniformLocation(terrainProgram, 'uCameraPos');
-
-const grid = createGrid(50);
-
-// Buffers terreno
-const terrainVAO = gl.createVertexArray();
-gl.bindVertexArray(terrainVAO);
-
-const terrainPosBuffer = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, terrainPosBuffer);
-gl.bufferData(gl.ARRAY_BUFFER, grid.positions, gl.STATIC_DRAW);
-gl.enableVertexAttribArray(terrainPosLoc);
-gl.vertexAttribPointer(terrainPosLoc, 3, gl.FLOAT, false, 0, 0);
-
-const terrainUVBuffer = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, terrainUVBuffer);
-gl.bufferData(gl.ARRAY_BUFFER, grid.uvs, gl.STATIC_DRAW);
-gl.enableVertexAttribArray(terrainUVLoc);
-gl.vertexAttribPointer(terrainUVLoc, 2, gl.FLOAT, false, 0, 0);
-
-const terrainIndexBuffer = gl.createBuffer();
-gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, terrainIndexBuffer);
-gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, grid.indices, gl.STATIC_DRAW);
-
+// particles
+const PCOUNT=260; const pPos=new Float32Array(PCOUNT*3), pSize=new Float32Array(PCOUNT), pLife=new Float32Array(PCOUNT);
+for(let i=0;i<PCOUNT;i++){ pPos[3*i+0]=(Math.random()-0.5)*0.6; pPos[3*i+1]=0; pPos[3*i+2]=(Math.random()-0.5)*0.6; pSize[i]=10+Math.random()*16; pLife[i]=Math.random();}
+const partVAO=gl.createVertexArray(); gl.bindVertexArray(partVAO);
+const bp=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bp); gl.bufferData(gl.ARRAY_BUFFER,pPos,gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);
+const bs=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bs); gl.bufferData(gl.ARRAY_BUFFER,pSize,gl.STATIC_DRAW); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1,1,gl.FLOAT,false,0,0);
+const bl=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bl); gl.bufferData(gl.ARRAY_BUFFER,pLife,gl.STATIC_DRAW); gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2,1,gl.FLOAT,false,0,0);
 gl.bindVertexArray(null);
 
-// --- PARTICULAS VOLCANICAS ---
+// ========== Scene ==========
+class Obj{ constructor(type){ this.type=type; this.pos=[0,type==='plane'?0:0.2,0]; this.rot=[0,0,0]; this.scale=[1,1,1]; this.color=[Math.random()*0.6+0.3,Math.random()*0.6+0.3,Math.random()*0.6+0.3,1]; this.name=type+'_'+Math.floor(Math.random()*999); this.children=[];} model(){ const T=translation(this.pos[0],this.pos[1],this.pos[2]); const R=rotY(this.rot[1]); const S=scaling(this.scale[0],this.scale[1],this.scale[2]); return multiply(T,multiply(R,S)); } serialize(){ return {type:this.type,pos:this.pos,rot:this.rot,scale:this.scale,color:this.color,name:this.name,children:this.children.map(c=>c.name)} } static deserialize(d){ const o=new Obj(d.type); o.pos=d.pos; o.rot=d.rot; o.scale=d.scale; o.color=d.color; o.name=d.name; return o; } }
+const scene=[ new Obj('plane') ]; scene[0].scale=[12,1,12]; scene[0].color=[0.15,0.28,0.12,1];
+let selected=null;
 
-const particleProgram = createProgram(gl, particleVS, particleFS);
-const particlePosLoc = gl.getAttribLocation(particleProgram, 'aPosition');
-const particlePointSizeLoc = gl.getAttribLocation(particleProgram, 'aPointSize');
+// ========== UI ==========
+const byId=id=>document.getElementById(id);
+const el={
+ addCube:byId('addCube'), addSphere:byId('addSphere'), addPlane:byId('addPlane'), addFire:byId('addFire'),
+ color:byId('colorPicker'), list:byId('objectList'), trans:byId('transforms'),
+ posX:byId('posX'), posY:byId('posY'), posZ:byId('posZ'), rotY:byId('rotY'), scale:byId('scale'),
+ dup:byId('dup'), grp:byId('grp'), align:byId('align'), del:byId('delete'),
+ sceneJSON:byId('sceneJSON'), exportJSON:byId('exportJSON'), loadJSON:byId('loadJSON'), exportPNG:byId('exportPNG'), kidMode:byId('kidMode')
+};
+function refreshList(){ el.list.innerHTML=''; for(const o of scene){ const d=document.createElement('div'); d.className='item'+(o===selected?' sel':''); d.textContent=o.name+' ('+o.type+')'; d.onclick=()=>{ selected=o; updateTransforms(); refreshList(); }; el.list.appendChild(d);} }
+function updateTransforms(){ if(!selected || selected.type==='plane'){ el.trans.style.display='none'; return; } el.trans.style.display='block'; el.posX.value=selected.pos[0]; el.posY.value=selected.pos[1]; el.posZ.value=selected.pos[2]; el.rotY.value=Math.round(selected.rot[1]*180/Math.PI); el.scale.value=selected.scale[0]; }
+el.addCube.onclick=()=>{ const o=new Obj('cube'); o.pos=[0,0.6,0]; o.color=hexToRgb(el.color.value); scene.push(o); selected=o; refreshList(); updateTransforms(); }
+el.addSphere.onclick=()=>{ const o=new Obj('sphere'); o.pos=[0,0.6,0]; o.color=hexToRgb(el.color.value); scene.push(o); selected=o; refreshList(); updateTransforms(); }
+el.addPlane.onclick=()=>{ const o=new Obj('plane'); o.scale=[3,1,3]; o.color=[0.15,0.28,0.12,1]; scene.push(o); selected=o; refreshList(); updateTransforms(); }
+el.addFire.onclick=()=>{ const o=new Obj('fire'); o.pos=[0,0.1,0]; scene.push(o); selected=o; refreshList(); updateTransforms(); }
 
-const particleCount = 200;
-const particlePositions = new Float32Array(particleCount * 3);
-const particleSizes = new Float32Array(particleCount);
+el.posX.oninput=el.posY.oninput=el.posZ.oninput=()=>{ if(!selected) return; selected.pos=[parseFloat(el.posX.value),parseFloat(el.posY.value),parseFloat(el.posZ.value)]; }
+el.rotY.oninput=()=>{ if(!selected) return; selected.rot[1]=toRad(parseFloat(el.rotY.value)); }
+el.scale.oninput=()=>{ if(!selected) return; const s=parseFloat(el.scale.value); selected.scale=[s,s,s]; }
 
-// Inicializar partículas en la base volcán (cerca centro en XY y altura cerca 0.2)
-for(let i=0; i<particleCount; i++) {
-  // X,Z dispersos cerca de centro (0,0)
-  particlePositions[i*3+0] = (Math.random()-0.5)*0.1;
-  particlePositions[i*3+1] = 0.2 + Math.random()*0.1; // altura inicial
-  particlePositions[i*3+2] = (Math.random()-0.5)*0.1;
-  particleSizes[i] = 10 + Math.random()*5;
+el.dup.onclick=()=>{ if(!selected){ alert('Selecciona un objeto'); return;} const copy=Obj.deserialize(selected.serialize()); copy.name=selected.name+'_copy'; scene.push(copy); selected=copy; refreshList(); updateTransforms(); }
+el.del.onclick=()=>{ if(!selected) return; const i=scene.indexOf(selected); if(i>=0) scene.splice(i,1); selected=scene[0]||null; refreshList(); updateTransforms(); }
+el.align.onclick=()=>{ if(!selected) return; selected.pos[0]=Math.round(selected.pos[0]); selected.pos[2]=Math.round(selected.pos[2]); updateTransforms(); }
+el.grp.onclick=()=>{ if(!selected) return; const g=new Obj('group'); g.name='group_'+Math.floor(Math.random()*999); scene.push(g); // naive grouping: attach nearby objs
+ for(let i=scene.length-1;i>=0;i--){ const o=scene[i]; if(o!==g && o!==selected && o.type!=='plane' && Math.hypot(o.pos[0]-selected.pos[0], o.pos[2]-selected.pos[2])<1.6){ g.children.push(o); scene.splice(i,1);} } selected=g; refreshList(); updateTransforms(); }
+
+el.exportJSON.onclick=()=>{ const data=scene.map(s=>s.serialize()); const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='scene.json'; a.click(); }
+el.loadJSON.onclick=()=>{ try{ const data=JSON.parse(el.sceneJSON.value); scene.length=0; for(const d of data) scene.push(Obj.deserialize(d)); selected=scene[0]||null; refreshList(); updateTransforms(); }catch(e){alert('JSON inválido');} }
+el.exportPNG.onclick=()=>{ const url=canvas.toDataURL('image/png'); const a=document.createElement('a'); a.href=url; a.download='scene.png'; a.click(); }
+el.kidMode.onclick=()=>{ document.body.classList.toggle('kid'); }
+
+// helper
+function hexToRgb(hex){ if(hex[0]==='#') hex=hex.slice(1); return [parseInt(hex.slice(0,2),16)/255, parseInt(hex.slice(2,4),16)/255, parseInt(hex.slice(4,6),16)/255,1]; }
+
+// ========== Picking, camera & gizmo ==========
+let draggingCam=false, lastX=0,lastY=0, yaw=0.8, pitch=0.25, dist=8;
+canvas.addEventListener('mousedown', (e)=>{ const r=canvas.getBoundingClientRect(); const x=e.clientX-r.left,y=e.clientY-r.top; const ray=getMouseRay(x,y); const hit=pick(ray); if(hit){ dragState.active=true; dragState.obj=hit; const p=rayPlaneIntersect(ray.origin,ray.direction,hit.pos[1]); if(p) dragState.offset=[hit.pos[0]-p[0],0,hit.pos[2]-p[2]]; canvas.style.cursor='grabbing'; } else { draggingCam=true; lastX=e.clientX; lastY=e.clientY; canvas.style.cursor='grabbing'; }});
+window.addEventListener('mouseup',()=>{ draggingCam=false; dragState.active=false; dragState.obj=null; gizmoDrag=null; canvas.style.cursor='grab';});
+window.addEventListener('mousemove',(e)=>{ if(dragState.active && dragState.obj && !gizmoDrag.active){ const r=canvas.getBoundingClientRect(); const ray=getMouseRay(e.clientX-r.left,e.clientY-r.top); const p=rayPlaneIntersect(ray.origin,ray.direction,dragState.obj.pos[1]); if(p){ dragState.obj.pos[0]=p[0]+dragState.offset[0]; dragState.obj.pos[2]=p[2]+dragState.offset[2]; updateTransforms(); refreshList(); } } else if(gizmoDrag.active && selected){ // gizmo axis drag
+  const r=canvas.getBoundingClientRect(); const mx=e.clientX-r.left,my=e.clientY-r.top;
+  const delta = screenDeltaAlongAxis(gizmoDrag.axis, mx - gizmoDrag.startX, my - gizmoDrag.startY);
+  selected.pos[gizmoDrag.axis==='x'?0:2] = gizmoDrag.startValue + delta;
+  updateTransforms(); refreshList();
+ } else if(draggingCam){ const dx=e.clientX-lastX, dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY; yaw+=dx*0.01; pitch+=dy*0.01; pitch=Math.max(-1.4,Math.min(1.4,pitch)); }});
+canvas.addEventListener('wheel',(e)=>{ dist+=e.deltaY*0.02; dist=Math.max(2,Math.min(60,dist)); e.preventDefault(); });
+const dragState={active:false,obj:null,offset:[0,0,0]};
+
+// ray
+function cameraPos(){ const cy=Math.sin(pitch)*dist; const cx=Math.cos(pitch)*Math.sin(yaw)*dist; const cz=Math.cos(pitch)*Math.cos(yaw)*dist; return [cx,cy,cz]; }
+function getMouseRay(mx,my){ const ndcX=(mx/canvas.clientWidth)*2-1, ndcY=1-(my/canvas.clientHeight)*2; const proj=perspective(Math.PI/4,canvas.width/canvas.height,0.1,200); const view=lookAt(cameraPos(),[0,0,0],[0,1,0]); const inv=invert(multiply(proj,view)); const near=mul4(inv,[ndcX,ndcY,-1,1]); const far=mul4(inv,[ndcX,ndcY,1,1]); for(let i=0;i<3;i++){near[i]/=near[3];far[i]/=far[3];} return {origin:[near[0],near[1],near[2]], direction: normalize([far[0]-near[0],far[1]-near[1],far[2]-near[2]])}; }
+function pick(ray){ for(const o of scene){ if(o.type==='plane'||o.type==='fire'||o.type==='group') continue; const s=Math.max(o.scale[0],o.scale[1],o.scale[2])*0.5; const min=[o.pos[0]-s,o.pos[1]-s,o.pos[2]-s], max=[o.pos[0]+s,o.pos[1]+s,o.pos[2]+s]; if(rayAABB(ray.origin,ray.direction,min,max)) return o; } return null; }
+function rayAABB(ro,rd,min,max){ let tmin=(min[0]-ro[0])/(rd[0]||1e-9), tmax=(max[0]-ro[0])/(rd[0]||1e-9); if(tmin>tmax){const tmp=tmin;tmin=tmax;tmax=tmp;} let tymin=(min[1]-ro[1])/(rd[1]||1e-9), tymax=(max[1]-ro[1])/(rd[1]||1e-9); if(tymin>tymax){const tmp=tymin;tymin=tymax;tymax=tmp;} if((tmin>tymax)||(tymin>tmax)) return false; if(tymin>tmin) tmin=tymin; if(tymax<tmax) tmax=tymax; let tzmin=(min[2]-ro[2])/(rd[2]||1e-9), tzmax=(max[2]-ro[2])/(rd[2]||1e-9); if(tzmin>tzmax){const tmp=tzmin;tzmin=tzmax;tzmax=tmp;} if((tmin>tzmax)||(tzmin>tmax)) return false; return true;}
+function rayPlaneIntersect(ro,rd,y){ if(Math.abs(rd[1])<1e-6) return null; const t=(y-ro[1])/rd[1]; if(t<0) return null; return [ro[0]+rd[0]*t,y,ro[2]+rd[2]*t]; }
+
+// gizmo dragging: compute screen-space direction of world axis and map mouse movement to world distance along axis
+let gizmoDrag = {active:false,axis:null,startX:0,startY:0,startValue:0};
+function screenDirForAxis(axis){ // returns normalized 2D screen vector for world axis (0:x,2:z)
+ const eye=cameraPos(), view=lookAt(eye,[0,0,0],[0,1,0]), proj=perspective(Math.PI/4,canvas.width/canvas.height,0.1,200);
+ const origin=[selected.pos[0],selected.pos[1],selected.pos[2],1];
+ const axisPoint = axis==='x' ? [selected.pos[0]+1,selected.pos[1],selected.pos[2],1] : [selected.pos[0],selected.pos[1],selected.pos[2]+1,1];
+ const clipO=mul4(multiply(proj,view),origin), clipA=mul4(multiply(proj,view),axisPoint);
+ if(Math.abs(clipO[3])<1e-6||Math.abs(clipA[3])<1e-6) return [0,0];
+ const ndcO=[clipO[0]/clipO[3], clipO[1]/clipO[3]], ndcA=[clipA[0]/clipA[3], clipA[1]/clipA[3]];
+ const sxO=(ndcO[0]*0.5+0.5)*gizmoCanvas.width, syO=( -ndcO[1]*0.5+0.5)*gizmoCanvas.height;
+ const sxA=(ndcA[0]*0.5+0.5)*gizmoCanvas.width, syA=( -ndcA[1]*0.5+0.5)*gizmoCanvas.height;
+ const vx=sxA-sxO, vy=syA-syO; const len=Math.hypot(vx,vy)||1; return [vx/len, vy/len];
+}
+function screenDeltaAlongAxis(axis, dx, dy){
+ const dir = screenDirForAxis(axis); return (dx*dir[0] + dy*dir[1]) / (gizmoCanvas.width) * (dist*1.5); // scale factor
 }
 
-// Buffers partículas
-const particleVAO = gl.createVertexArray();
-gl.bindVertexArray(particleVAO);
+// gizmo mouse handling (on panel overlay)
+gizmoCanvas.addEventListener('mousedown', (e)=>{
+ if(!selected || selected.type==='plane') return;
+ const r=gizmoCanvas.getBoundingClientRect(), mx=e.clientX-r.left,my=e.clientY-r.top;
+ // detect near arrow endpoints: compute screen pos of selected
+ const eye=cameraPos(), view=lookAt(eye,[0,0,0],[0,1,0]), proj=perspective(Math.PI/4,canvas.width/canvas.height,0.1,200);
+ const world=[selected.pos[0],selected.pos[1],selected.pos[2],1]; const clip=mul4(multiply(proj,view),world); if(Math.abs(clip[3])<1e-6) return;
+ const ndc=[clip[0]/clip[3], clip[1]/clip[3]]; const sx=(ndc[0]*0.5+0.5)*gizmoCanvas.width, sy=(-ndc[1]*0.5+0.5)*gizmoCanvas.height;
+ const dx=mx-sx, dy=my-sy;
+ if(Math.hypot(dx,dy) < 50){ // start center = Z drag if up/down? we'll prefer axis handle detection
+   // check distance to X handle
+   const xhandle = screenDirForAxis('x'); const hx=sx + xhandle[0]*40, hy=sy + xhandle[1]*40;
+   const zh = screenDirForAxis('z'); const zx=sx + zh[0]* -40, zy=sy + zh[1]* -40;
+   if(Math.hypot(mx-hx,my-hy) < 18){ gizmoDrag.active=true; gizmoDrag.axis='x'; gizmoDrag.startX=mx; gizmoDrag.startY=my; gizmoDrag.startValue=selected.pos[0]; }
+   else if(Math.hypot(mx-zx,my-zy) < 18){ gizmoDrag.active=true; gizmoDrag.axis='z'; gizmoDrag.startX=mx; gizmoDrag.startY=my; gizmoDrag.startValue=selected.pos[2]; }
+ }
+});
+window.addEventListener('mouseup',()=>{ gizmoDrag.active=false; gizmoDrag.axis=null; });
 
-const particlePosBuffer = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, particlePosBuffer);
-gl.bufferData(gl.ARRAY_BUFFER, particlePositions, gl.DYNAMIC_DRAW);
-gl.enableVertexAttribArray(particlePosLoc);
-gl.vertexAttribPointer(particlePosLoc, 3, gl.FLOAT, false, 0, 0);
+// ========== Rendering ==========
+gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+const uProjS = gl.getUniformLocation(P_SOLID,'uProj'), uViewS = gl.getUniformLocation(P_SOLID,'uView'), uModelS = gl.getUniformLocation(P_SOLID,'uModel'), uLightS = gl.getUniformLocation(P_SOLID,'uLight'), uViewPosS = gl.getUniformLocation(P_SOLID,'uViewPos'), uColorS = gl.getUniformLocation(P_SOLID,'uColor');
+const uProjP = gl.getUniformLocation(P_PART,'uProj'), uViewP = gl.getUniformLocation(P_PART,'uView'), uTimeP = gl.getUniformLocation(P_PART,'uTime');
 
-const particleSizeBuffer = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, particleSizeBuffer);
-gl.bufferData(gl.ARRAY_BUFFER, particleSizes, gl.STATIC_DRAW);
-gl.enableVertexAttribArray(particlePointSizeLoc);
-gl.vertexAttribPointer(particlePointSizeLoc, 1, gl.FLOAT, false, 0, 0);
-
-gl.bindVertexArray(null);
-
-// --- MATRICES Y CÁMARA ---
-
-let cameraPos = [0, 1.2, 1.8];
-let cameraTarget = [0, 0, 0];
-let upVector = [0, 1, 0];
-
-const fov = Math.PI / 4;
-const aspect = canvas.width / canvas.height;
-const near = 0.1;
-const far = 100;
-
-const projMatrix = createPerspectiveMatrix(fov, aspect, near, far);
-
-// Modelo identidad para terreno
-const modelMatrix = new Float32Array(16);
-for(let i=0;i<16;++i) modelMatrix[i] = (i%5 === 0) ? 1 : 0; // identity
-
-// --- ANIMACIÓN ---
-
-// Variables partículas
-const particleVelocities = new Float32Array(particleCount * 3);
-for(let i=0; i<particleCount; i++) {
-  // Velocidad inicial hacia arriba y dispersión lateral
-  particleVelocities[i*3+0] = (Math.random()-0.5)*0.002;
-  particleVelocities[i*3+1] = 0.005 + Math.random()*0.003;
-  particleVelocities[i*3+2] = (Math.random()-0.5)*0.002;
+let t0=performance.now();
+function render(now){
+ resize();
+ const time=(now-t0)*0.001;
+ gl.clearColor(0.02,0.04,0.07,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+ const eye=cameraPos(), view=lookAt(eye,[0,0,0],[0,1,0]), proj=perspective(Math.PI/4,canvas.width/canvas.height,0.1,200);
+ // solids
+ gl.useProgram(P_SOLID); gl.uniformMatrix4fv(uProjS,false,proj); gl.uniformMatrix4fv(uViewS,false,view); gl.uniform3fv(uLightS,normalize([0.5,1,0.3])); gl.uniform3fv(uViewPosS,eye);
+ for(const o of scene){
+   if(o.type==='plane'){ gl.bindVertexArray(planeVAO); gl.uniformMatrix4fv(uModelS,false,o.model()); gl.uniform4fv(uColorS,o.color); gl.drawElements(gl.TRIANGLES,plane.count,gl.UNSIGNED_SHORT,0); gl.bindVertexArray(null); continue; }
+   if(o.type==='cube'){ gl.bindVertexArray(cubeVAO); gl.uniformMatrix4fv(uModelS,false,o.model()); gl.uniform4fv(uColorS,o.color); gl.drawElements(gl.TRIANGLES,cube.count,gl.UNSIGNED_SHORT,0); gl.bindVertexArray(null); continue; }
+   if(o.type==='sphere'){ gl.bindVertexArray(sphereVAO); gl.uniformMatrix4fv(uModelS,false,o.model()); gl.uniform4fv(uColorS,o.color); gl.drawElements(gl.TRIANGLES,sphere.count,gl.UNSIGNED_SHORT,0); gl.bindVertexArray(null); continue; }
+   if(o.type==='fire'){ gl.useProgram(P_PART); gl.uniformMatrix4fv(uProjP,false,proj); const tMat=translation(-o.pos[0],-o.pos[1],-o.pos[2]); const viewP=multiply(view,tMat); gl.uniformMatrix4fv(uViewP,false,viewP); gl.uniform1f(uTimeP,time); gl.bindVertexArray(partVAO); gl.drawArrays(gl.POINTS,0,PCOUNT); gl.bindVertexArray(null); gl.useProgram(P_SOLID); gl.uniformMatrix4fv(uProjS,false,proj); gl.uniformMatrix4fv(uViewS,false,view); }
+ }
+ drawGizmo();
+ requestAnimationFrame(render);
 }
-
-function updateParticles() {
-  for(let i=0; i<particleCount; i++) {
-    let idx = i*3;
-    // Actualizamos posición
-    particlePositions[idx+0] += particleVelocities[idx+0];
-    particlePositions[idx+1] += particleVelocities[idx+1];
-    particlePositions[idx+2] += particleVelocities[idx+2];
-
-    // Si la partícula sube demasiado o se dispersa mucho, la reseteamos a base
-    if(particlePositions[idx+1] > 1.2 || Math.abs(particlePositions[idx+0]) > 0.5 || Math.abs(particlePositions[idx+2]) > 0.5) {
-      particlePositions[idx+0] = (Math.random()-0.5)*0.1;
-      particlePositions[idx+1] = 0.2 + Math.random()*0.1;
-      particlePositions[idx+2] = (Math.random()-0.5)*0.1;
-    }
-  }
-}
-
-// --- RENDER ---
-
-function render(time=0) {
-  gl.viewport(0, 0, canvas.width, canvas.height);
-  gl.clearColor(0.0, 0.05, 0.1, 1);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  gl.enable(gl.DEPTH_TEST);
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-  // Cámara con ligera órbita horizontal
-  const angle = time * 0.0002;
-  cameraPos = [Math.sin(angle)*2, 1.2, Math.cos(angle)*2];
-  const viewMatrix = createLookAtMatrix(cameraPos, cameraTarget, upVector);
-
-  // --- Dibujar terreno ---
-  gl.useProgram(terrainProgram);
-  gl.bindVertexArray(terrainVAO);
-  gl.uniformMatrix4fv(uProjectionLoc, false, projMatrix);
-  gl.uniformMatrix4fv(uViewLoc, false, viewMatrix);
-  gl.uniformMatrix4fv(uModelLoc, false, modelMatrix);
-  gl.uniform3fv(uCameraPosLoc, cameraPos);
-  gl.drawElements(gl.TRIANGLES, grid.indices.length, gl.UNSIGNED_SHORT, 0);
-
-  // --- Actualizar y dibujar partículas ---
-  updateParticles();
-
-  gl.useProgram(particleProgram);
-  gl.bindVertexArray(particleVAO);
-
-  // Actualizar buffer posiciones partículas
-  gl.bindBuffer(gl.ARRAY_BUFFER, particlePosBuffer);
-  gl.bufferSubData(gl.ARRAY_BUFFER, 0, particlePositions);
-
-  gl.uniformMatrix4fv(gl.getUniformLocation(particleProgram, 'uProjection'), false, projMatrix);
-  gl.uniformMatrix4fv(gl.getUniformLocation(particleProgram, 'uView'), false, viewMatrix);
-
-  gl.drawArrays(gl.POINTS, 0, particleCount);
-
-  gl.bindVertexArray(null);
-
-  requestAnimationFrame(render);
-}
-
 requestAnimationFrame(render);
 
-window.addEventListener('resize', () => {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  gl.viewport(0, 0, canvas.width, canvas.height);
-});
+// gizmo draw overlay
+function drawGizmo(){
+ const ctx=gizmoCanvas.getContext('2d'); ctx.clearRect(0,0,gizmoCanvas.width,gizmoCanvas.height);
+ if(!selected || selected.type==='plane') return;
+ const eye=cameraPos(), view=lookAt(eye,[0,0,0],[0,1,0]), proj=perspective(Math.PI/4,canvas.width/canvas.height,0.1,200);
+ const world=[selected.pos[0],selected.pos[1],selected.pos[2],1], clip=mul4(multiply(proj,view),world); if(Math.abs(clip[3])<1e-6) return;
+ const ndc=[clip[0]/clip[3], clip[1]/clip[3]]; const sx=(ndc[0]*0.5+0.5)*gizmoCanvas.width, sy=( -ndc[1]*0.5+0.5)*gizmoCanvas.height;
+ const xdir = screenDirForAxis('x'); const zdir = screenDirForAxis('z');
+ ctx.lineWidth=6; ctx.strokeStyle='rgba(255,200,120,0.95)'; ctx.fillStyle='rgba(255,200,120,0.95)';
+ ctx.beginPath(); ctx.moveTo(sx - xdir[0]*40, sy - xdir[1]*40); ctx.lineTo(sx + xdir[0]*40, sy + xdir[1]*40); ctx.stroke();
+ ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + xdir[0]*40, sy + xdir[1]*40); ctx.lineTo(sx + xdir[0]*30 - xdir[1]*8, sy + xdir[1]*30 - xdir[0]*8); ctx.lineTo(sx + xdir[0]*30 + xdir[1]*8, sy + xdir[1]*30 + xdir[0]*8); ctx.fill();
+ ctx.beginPath(); ctx.moveTo(sx - zdir[0]*40, sy - zdir[1]*40); ctx.lineTo(sx + zdir[0]*40, sy + zdir[1]*40); ctx.stroke();
+ ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + zdir[0]*-40, sy + zdir[1]*-40); ctx.lineTo(sx + zdir[0]*-30 - zdir[1]*8, sy + zdir[1]*-30 - zdir[0]*8); ctx.lineTo(sx + zdir[0]*-30 + zdir[1]*8, sy + zdir[1]*-30 + zdir[0]*8); ctx.fill();
+}
+
+// init
+refreshList(); selected=scene[0]; updateTransforms();
 
 </script>
 </body>
