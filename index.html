@@ -86,7 +86,7 @@ const loc=name=>gl.getUniformLocation(program,name);
 
 const N=120,spacing=1;
 const verts=new Float32Array(N*N*3),norms=new Float32Array(N*N*3);
-const indices=new Uint32Array((N-1)*(N-1)*6);
+const indices=new Uint16Array((N-1)*(N-1)*6);
 for(let y=0;y<N-1;y++)for(let x=0;x<N-1;x++){
   let i=(y*(N-1)+x)*6,a=y*N+x,b=y*N+x+1,c=(y+1)*N+x,d=(y+1)*N+x+1;
   indices.set([a,b,c,b,d,c],i);
@@ -189,6 +189,16 @@ function lookAt(eye,c,up){
 
 gl.enable(gl.DEPTH_TEST);
 
+function multiplyMatrices(a,b){
+  let o=new Float32Array(16);
+  for(let i=0;i<4;i++)for(let j=0;j<4;j++){
+    let s=0;
+    for(let k=0;k<4;k++) s+=a[k*4+i]*b[j*4+k];
+    o[j*4+i]=s;
+  }
+  return o;
+}
+
 function loop(){
   update();
   computeNormals(cam.x,cam.y);
@@ -197,9 +207,8 @@ function loop(){
   const center=[eye[0]+dir[0],eye[1]+dir[1],eye[2]+dir[2]];
   const view=lookAt(eye,center,[0,0,1]);
   const proj=perspective(Math.PI/3,canvas.width/canvas.height,0.1,1000);
-  const pv=new Float32Array(16);
-  for(let i=0;i<16;i++) pv[i]=
-    proj[i%4*4+Math.floor(i/4)]*view[Math.floor(i/4)*4+i%4];
+  const pv=multiplyMatrices(proj,view);
+  
   gl.useProgram(program);
   gl.uniformMatrix4fv(uPV,false,pv);
   gl.uniformMatrix4fv(uModel,false,new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]));
@@ -211,7 +220,7 @@ function loop(){
   gl.bindBuffer(gl.ARRAY_BUFFER,nbo);
   gl.vertexAttribPointer(nLoc,3,gl.FLOAT,false,0,0);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ibo);
-  gl.drawElements(gl.TRIANGLES,indices.length,gl.UNSIGNED_INT,0);
+  gl.drawElements(gl.TRIANGLES,indices.length,gl.UNSIGNED_SHORT,0);
   requestAnimationFrame(loop);
 }
 
