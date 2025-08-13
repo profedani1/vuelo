@@ -1,230 +1,147 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Terrain 3D Simplex - WASD + Mouse Look</title>
-<style>html,body{margin:0;height:100%;background:#111;overflow:hidden;}canvas{display:block;width:100%;height:100%;cursor:none;}</style>
+  <meta charset="UTF-8" />
+  <title>Terreno Simplex Multicapa</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #87CEEB; }
+    canvas { display: block; }
+  </style>
 </head>
 <body>
-<canvas id="gl"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/simplex-noise@4.0.1/simplex-noise.min.js"></script>
 <script>
-class SimplexNoise {
-  constructor(seed=Math.random()){
-    this.grad3=[[1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],[1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],[0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]];
-    this.p=new Uint8Array(256);
-    for(let i=0;i<256;i++)this.p[i]=Math.floor(Math.abs(Math.sin((i+seed*9999))*65536)%256);
-    this.perm=new Uint8Array(512);
-    for(let i=0;i<512;i++)this.perm[i]=this.p[i&255];
+window.addEventListener("load", () => {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x87ceeb);
+  scene.fog = new THREE.FogExp2(0x87ceeb, 0.002);
+
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 40, 60);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const light = new THREE.DirectionalLight(0xffffff, 1.5);
+  light.position.set(50, 100, 50);
+  scene.add(light);
+  scene.add(new THREE.AmbientLight(0x888888));
+
+  const SIZE = 1000;
+  const SEGMENTS = 200;
+  const geometry = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS);
+  geometry.rotateX(-Math.PI / 2);
+
+  const colorArray = new Float32Array(geometry.attributes.position.count * 3);
+  for (let i = 0; i < geometry.attributes.position.count; i++) {
+    colorArray[i*3 + 0] = 0;
+    colorArray[i*3 + 1] = 1;
+    colorArray[i*3 + 2] = 0;
   }
-  dot(g,x,y){return g[0]*x+g[1]*y;}
-  noise(x,y){
-    const F2=0.5*(Math.sqrt(3)-1),G2=(3-Math.sqrt(3))/6;
-    let s=(x+y)*F2,i=Math.floor(x+s),j=Math.floor(y+s);
-    let t=(i+j)*G2,X0=i-t,Y0=j-t,x0=x-X0,y0=y-Y0;
-    let i1=x0>y0?1:0,j1=x0>y0?0:1;
-    let x1=x0-i1+G2,y1=y0-j1+G2,x2=x0-1+2*G2,y2=y0-1+2*G2;
-    let ii=i&255,jj=j&255;
-    let gi0=this.perm[ii+this.perm[jj]]%12,gi1=this.perm[ii+i1+this.perm[jj+j1]]%12,gi2=this.perm[ii+1+this.perm[jj+1]]%12;
-    let n=0;
-    [ [x0,y0,gi0],[x1,y1,gi1],[x2,y2,gi2] ].forEach(([xx,yy,gi])=>{
-      let t=0.5-xx*xx-yy*yy;
-      if(t>0){t*=t;n+=t*t*this.dot(this.grad3[gi],xx,yy);}
-    });
-    return 70*n;
-  }
-}
+  geometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
 
-const canvas=document.getElementById('gl'),gl=canvas.getContext('webgl2',{antialias:true});
-if(!gl){alert('WebGL2 requerido');throw 0;}
-function resize(){canvas.width=innerWidth;canvas.height=innerHeight;gl.viewport(0,0,canvas.width,canvas.height);}
-window.addEventListener('resize',resize);resize();
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    flatShading: false
+  });
 
-const vs=`#version 300 es
-in vec3 position,normal;
-uniform mat4 uPV,uModel;
-out vec3 vNormal,vPos;
-void main(){
-  vNormal=mat3(uModel)*normal;
-  vPos=(uModel*vec4(position,1)).xyz;
-  gl_Position=uPV*vec4(position,1);
-}`;
-const fs=`#version 300 es
-precision highp float;
-in vec3 vNormal,vPos;
-uniform vec3 uLight;
-out vec4 outColor;
-void main(){
-  vec3 n=normalize(vNormal);
-  float diff=max(dot(n,normalize(uLight)),0.);
-  float shade=0.3+0.7*diff;
-  float h=vPos.z;
-  vec3 c=mix(vec3(0.,0.3,0.6),vec3(0.9,0.9,0.7),smoothstep(-1.,1.,h));
-  c=mix(c,vec3(0.2,0.6,0.2),smoothstep(0.1,0.6,h));
-  c=mix(c,vec3(0.5,0.5,0.5),smoothstep(0.6,1.5,h));
-  outColor=vec4(c*shade,1);
-}`;
+  const terrain = new THREE.Mesh(geometry, material);
+  scene.add(terrain);
 
-function createShader(t,s){
-  let sh=gl.createShader(t);
-  gl.shaderSource(sh,s);
-  gl.compileShader(sh);
-  if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(sh));
-  return sh;
-}
-function createProgram(vs,fs){
-  let p=gl.createProgram();
-  gl.attachShader(p,createShader(gl.VERTEX_SHADER,vs));
-  gl.attachShader(p,createShader(gl.FRAGMENT_SHADER,fs));
-  gl.linkProgram(p);
-  if(!gl.getProgramParameter(p,gl.LINK_STATUS))console.error(gl.getProgramInfoLog(p));
-  return p;
-}
-const program=createProgram(vs,fs);
-gl.useProgram(program);
-const loc=name=>gl.getUniformLocation(program,name);
+  let offsetX = 0, offsetZ = 0, offsetY = 40;
+  const SPEED = 500, VERTICAL_SPEED = 100;
+  const keys = {};
+  window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+  window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-const N=120,spacing=1;
-const verts=new Float32Array(N*N*3),norms=new Float32Array(N*N*3);
-const indices=new Uint16Array((N-1)*(N-1)*6);
-for(let y=0;y<N-1;y++)for(let x=0;x<N-1;x++){
-  let i=(y*(N-1)+x)*6,a=y*N+x,b=y*N+x+1,c=(y+1)*N+x,d=(y+1)*N+x+1;
-  indices.set([a,b,c,b,d,c],i);
-}
+  let isDragging = false, prevMouseX = 0, prevMouseY = 0;
+  let pitch = 0, yaw = 0;
+  window.addEventListener('mousedown', e => {
+    isDragging = true; prevMouseX = e.clientX; prevMouseY = e.clientY;
+  });
+  window.addEventListener('mouseup', () => isDragging = false);
+  window.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    const dx = e.clientX - prevMouseX;
+    const dy = e.clientY - prevMouseY;
+    prevMouseX = e.clientX; prevMouseY = e.clientY;
+    yaw   -= dx * 0.001;
+    pitch -= dy * 0.001;
+    pitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, pitch));
+  });
 
-const vbo=gl.createBuffer(),nbo=gl.createBuffer(),ibo=gl.createBuffer();
-gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ibo);
-gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,indices,gl.STATIC_DRAW);
+  // --- Simplex Noise multicapa ---
+  const simplex = new SimplexNoise();
+  const a = [1, 0.5, 0.25, 0.125, 0.0625];
+  const f = [0.005, 0.01, 0.02, 0.04, 0.08];
 
-const posLoc=gl.getAttribLocation(program,'position'),nLoc=gl.getAttribLocation(program,'normal');
-gl.bindBuffer(gl.ARRAY_BUFFER,vbo);
-gl.enableVertexAttribArray(posLoc);
-gl.vertexAttribPointer(posLoc,3,gl.FLOAT,false,0,0);
-gl.bindBuffer(gl.ARRAY_BUFFER,nbo);
-gl.enableVertexAttribArray(nLoc);
-gl.vertexAttribPointer(nLoc,3,gl.FLOAT,false,0,0);
-
-const uPV=loc('uPV'),uModel=loc('uModel'),uLight=loc('uLight');
-
-const noise=new SimplexNoise();
-function getHeight(x,y){
-  let n=0,f=0.02,a=1,m=0;
-  for(let i=0;i<5;i++){n+=a*noise.noise(x*f,y*f);m+=a;a/=2;f*=2;}
-  return (n/m)*8;
-}
-
-function computeNormals(cx,cy){
-  for(let j=0;j<N;j++){
-    for(let i=0;i<N;i++){
-      let x=cx+(i-N/2)*spacing,y=cy+(j-N/2)*spacing,h=getHeight(x,y);
-      verts[(j*N+i)*3]=x;
-      verts[(j*N+i)*3+1]=y;
-      verts[(j*N+i)*3+2]=h;
+  function getHeight(x, z) {
+    let sum = 0;
+    for (let o = 0; o <= 4; o++) {
+      sum += a[o] * simplex.noise2D((x+offsetX) * f[o], (z+offsetZ) * f[o]);
     }
+    return 8 * sum;
   }
-  for(let j=0;j<N;j++){
-    for(let i=0;i<N;i++){
-      let x=cx+(i-N/2)*spacing,y=cy+(j-N/2)*spacing;
-      let hl=getHeight(x-spacing,y),hr=getHeight(x+spacing,y);
-      let hd=getHeight(x,y-spacing),hu=getHeight(x,y+spacing);
-      let nx=hl-hr,ny=hd-hu,nz=2,len=Math.hypot(nx,ny,nz)||1;
-      norms[(j*N+i)*3]=nx/len;
-      norms[(j*N+i)*3+1]=ny/len;
-      norms[(j*N+i)*3+2]=nz/len;
-    }
-  }
-  gl.bindBuffer(gl.ARRAY_BUFFER,vbo);
-  gl.bufferData(gl.ARRAY_BUFFER,verts,gl.DYNAMIC_DRAW);
-  gl.bindBuffer(gl.ARRAY_BUFFER,nbo);
-  gl.bufferData(gl.ARRAY_BUFFER,norms,gl.DYNAMIC_DRAW);
-}
 
-let cam={x:0,y:0,z:10,yaw:0,pitch:0};
-const keys={};
-window.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);
-window.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
-canvas.addEventListener('click',()=>canvas.requestPointerLock());
-function onMouse(e){
-  cam.yaw-=e.movementX*0.002;
-  cam.pitch-=e.movementY*0.002;
-  cam.pitch=Math.min(Math.max(cam.pitch,-1.4),1.4);
-}
-document.addEventListener('pointerlockchange',()=>{ 
-  if(document.pointerLockElement===canvas)document.addEventListener('mousemove',onMouse);
-  else document.removeEventListener('mousemove',onMouse);
+  function updateTerrainGeometry(isMoving) {
+    const posAttr = geometry.attributes.position;
+    const colorAttr = geometry.attributes.color;
+
+    for (let i = 0; i < posAttr.count; i++) {
+      const x = posAttr.getX(i);
+      const z = posAttr.getZ(i);
+      const y = getHeight(x, z);
+      posAttr.setY(i, y);
+
+      const normU = (y + 20) / 40;
+      const r = normU;
+      const g = 1 - Math.abs(normU - 0.5)*2;
+      const b = 1 - normU;
+      colorAttr.setXYZ(i, r, g, b);
+    }
+
+    posAttr.needsUpdate = true;
+    colorAttr.needsUpdate = true;
+    geometry.computeVertexNormals();
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const delta = 0.016;
+    const moving = keys['w']||keys['a']||keys['s']||keys['d'];
+    if (keys['w']) offsetZ -= SPEED*delta;
+    if (keys['s']) offsetZ += SPEED*delta;
+    if (keys['a']) offsetX -= SPEED*delta;
+    if (keys['d']) offsetX += SPEED*delta;
+    if (keys['q']) offsetY += VERTICAL_SPEED*delta;
+    if (keys['e']) offsetY -= VERTICAL_SPEED*delta;
+    offsetY = Math.max(2, offsetY);
+
+    updateTerrainGeometry(moving);
+
+    camera.position.set(0, offsetY, 0);
+    const dir = new THREE.Vector3(
+      Math.cos(pitch)*Math.sin(yaw),
+      Math.sin(pitch),
+      Math.cos(pitch)*Math.cos(yaw)
+    );
+    camera.lookAt(camera.position.clone().add(dir));
+
+    renderer.render(scene, camera);
+  }
+
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
 });
-
-const speed=0.12;
-function update(){
-  let f=0,r=0;
-  if(keys['w'])f++; if(keys['s'])f--;
-  if(keys['d'])r++; if(keys['a'])r--;
-  if(keys['q'])cam.z-=speed;
-  if(keys['e'])cam.z+=speed;
-  const s=Math.sin(cam.yaw),c=Math.cos(cam.yaw);
-  cam.x+=(f*c - r*s)*speed;
-  cam.y+=(f*s + r*c)*speed;
-}
-
-function perspective(fovy,aspect,near,far){
-  const f=1/Math.tan(fovy/2),nf=1/(near-far);
-  return new Float32Array([f/aspect,0,0,0,0,f,0,0,0,0,(far+near)*nf,-1,0,0,2*far*near*nf,0]);
-}
-function lookAt(eye,c,up){
-  const z=[eye[0]-c[0],eye[1]-c[1],eye[2]-c[2]];
-  let l=Math.hypot(...z); z[0]/=l; z[1]/=l; z[2]/=l;
-  const x=[up[1]*z[2]-up[2]*z[1],up[2]*z[0]-up[0]*z[2],up[0]*z[1]-up[1]*z[0]];
-  l=Math.hypot(...x); x[0]/=l; x[1]/=l; x[2]/=l;
-  const y=[z[1]*x[2]-z[2]*x[1],z[2]*x[0]-z[0]*x[2],z[0]*x[1]-z[1]*x[0]];
-  return new Float32Array([
-    x[0],y[0],z[0],0,
-    x[1],y[1],z[1],0,
-    x[2],y[2],z[2],0,
-    -(x[0]*eye[0]+x[1]*eye[1]+x[2]*eye[2]),
-    -(y[0]*eye[0]+y[1]*eye[1]+y[2]*eye[2]),
-    -(z[0]*eye[0]+z[1]*eye[1]+z[2]*eye[2]),
-    1
-  ]);
-}
-
-gl.enable(gl.DEPTH_TEST);
-
-function multiplyMatrices(a,b){
-  let o=new Float32Array(16);
-  for(let i=0;i<4;i++)for(let j=0;j<4;j++){
-    let s=0;
-    for(let k=0;k<4;k++) s+=a[k*4+i]*b[j*4+k];
-    o[j*4+i]=s;
-  }
-  return o;
-}
-
-function loop(){
-  update();
-  computeNormals(cam.x,cam.y);
-  const eye=[cam.x,cam.y,cam.z];
-  const dir=[Math.cos(cam.pitch)*Math.cos(cam.yaw),Math.cos(cam.pitch)*Math.sin(cam.yaw),Math.sin(cam.pitch)];
-  const center=[eye[0]+dir[0],eye[1]+dir[1],eye[2]+dir[2]];
-  const view=lookAt(eye,center,[0,0,1]);
-  const proj=perspective(Math.PI/3,canvas.width/canvas.height,0.1,1000);
-  const pv=multiplyMatrices(proj,view);
-  
-  gl.useProgram(program);
-  gl.uniformMatrix4fv(uPV,false,pv);
-  gl.uniformMatrix4fv(uModel,false,new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]));
-  gl.uniform3fv(uLight,new Float32Array([1,1,0.6]));
-  gl.clearColor(0.5,0.75,1,1);
-  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
-  gl.bindBuffer(gl.ARRAY_BUFFER,vbo);
-  gl.vertexAttribPointer(posLoc,3,gl.FLOAT,false,0,0);
-  gl.bindBuffer(gl.ARRAY_BUFFER,nbo);
-  gl.vertexAttribPointer(nLoc,3,gl.FLOAT,false,0,0);
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ibo);
-  gl.drawElements(gl.TRIANGLES,indices.length,gl.UNSIGNED_SHORT,0);
-  requestAnimationFrame(loop);
-}
-
-loop();
 </script>
 </body>
 </html>
