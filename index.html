@@ -3,528 +3,423 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Simulación + Detección Automática de Descubrimientos Científicos</title>
+<title>Esfera adaptada a la imagen (captura de forma)</title>
 <style>
-  body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    margin:0; background:#0a1226; color:#cfd9e9;
-    display: flex; flex-direction: column; height: 100vh;
-  }
-  header {
-    background:#061126; padding: 0.5rem 1rem; font-weight: bold; font-size: 1.2rem;
-  }
-  main {
-    display:flex; flex:1; overflow:hidden;
-  }
-  #leftPanel {
-    width:350px; background:#0d1839; padding:1rem; overflow-y:auto;
-    box-shadow: inset -3px 0 6px #021026;
-  }
-  #rightPanel {
-    flex:1; display:flex; flex-direction: column;
-  }
-  #canvasContainer {
-    flex:1; background:#07152f;
-    display:flex; justify-content:center; align-items:center;
-  }
-  canvas {
-    background:#0a1a3c; border-radius:12px;
-    max-width: 100%; max-height: 100%;
-  }
-  button {
-    background:#2a62bf; border:none; color:#dde6f5;
-    padding:0.5rem 1rem; margin-top:1rem;
-    cursor:pointer; border-radius:8px;
-  }
-  button:disabled {
-    background:#4c7dc9aa;
-    cursor: not-allowed;
-  }
-  h2 {
-    margin-top: 0;
-  }
-  .alert {
-    background:#f45c5c; padding:0.5rem; border-radius:6px; margin-top:0.5rem; font-weight: bold;
-    color:#fff;
-  }
-  .log {
-    background:#07172f; border-radius:8px; padding:8px; height: 180px; overflow-y: auto; font-family: monospace; font-size: 12px;
-    margin-top: 0.5rem;
-  }
-  .stat {
-    margin-top: 0.4rem;
-  }
-  #clustersPlot {
-    margin-top: 1rem;
-    height: 180px;
-    background: #0b1b3a;
-    border-radius: 10px;
-    padding: 6px;
-    font-size: 12px;
-    overflow-x: auto;
-    white-space: nowrap;
+  :root { --aside-w: 38vw; --bg:#0b0b0b; --panel:#141414; --fg:#eaeaea; --muted:#333; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,Segoe UI,Arial,sans-serif;height:100vh;display:flex}
+  #left{width:var(--aside-w);min-width:300px;border-right:1px solid var(--muted);display:flex;flex-direction:column}
+  #right{flex:1;position:relative;display:flex;flex-direction:column}
+  #videoWrap{position:relative;aspect-ratio:16/9;background:#000}
+  #video{width:100%;height:100%;object-fit:cover}
+  #controls{padding:10px;background:var(--panel);display:grid;grid-template-columns:1fr 1fr;gap:8px;border-top:1px solid var(--muted)}
+  #controls button, #controls select, #controls input[type=checkbox]+label { font-size:14px }
+  #controls button{cursor:pointer;padding:8px;border:1px solid #222;background:#1f1f1f;color:#fff;border-radius:8px}
+  #controls button:active{transform:scale(0.98)}
+  #renderer{flex:1;min-height:0}
+  canvas{display:block;width:100%;height:100%}
+  #status{position:absolute;left:10px;bottom:10px;background:rgba(0,0,0,.5);padding:6px 10px;border-radius:8px;font-size:12px;color:#ddd}
+  .row{grid-column:1/-1;display:flex;gap:10px;align-items:center}
+  .spacer{height:8px;grid-column:1/-1}
+  .toggle{display:flex;align-items:center;gap:6px}
+  @media (max-width: 1100px){
+    body{flex-direction:column}
+    #left{width:100%;min-width:auto}
+    #right{height:60vh}
   }
 </style>
 </head>
 <body>
-<header>Simulación + Detección Automática de Descubrimientos Científicos</header>
-<main>
-  <section id="leftPanel">
-    <h2>Controles</h2>
-    <div>
-      <button id="btnStart">Iniciar Exploración Automática</button>
-      <button id="btnStop" disabled>Detener</button>
+  <aside id="left">
+    <div id="videoWrap">
+      <video id="video" autoplay playsinline muted></video>
     </div>
+    <div id="controls">
+      <button id="btnStart">Iniciar cámara</button>
+      <button id="btnStop">Detener cámara</button>
 
-    <h3>Estado</h3>
-    <div class="stat">Simulaciones totales: <span id="totalSims">0</span></div>
-    <div class="stat">Simulación actual: <span id="currentSim">0</span></div>
-    <div class="stat">Alertas de descubrimiento: <span id="discAlertsCount">0</span></div>
+      <button id="btnFreeze">Capturar forma</button>
+      <button id="btnLive">Volver a vivo</button>
 
-    <h3>Alertas Detectadas</h3>
-    <div id="alerts" class="log" aria-live="polite" aria-atomic="true"></div>
+      <button id="btnShot" class="row">Captura de pantalla</button>
+      <button id="btnExport" class="row">Exportar GLB (capturado)</button>
 
-    <h3>Clusters y Análisis</h3>
-    <div id="clustersPlot">(Gráfico de clusters aparecerá aquí)</div>
-  </section>
+      <div class="row">
+        <div class="toggle">
+          <input type="checkbox" id="chkFlat" />
+          <label for="chkFlat">Flat Shading</label>
+        </div>
+        <div class="toggle">
+          <input type="checkbox" id="chkWire" />
+          <label for="chkWire">Wireframe</label>
+        </div>
+      </div>
 
-  <section id="rightPanel">
-    <div id="canvasContainer">
-      <canvas id="canvas" width="600" height="600"></canvas>
+      <div class="row">
+        <label style="min-width:120px">Frecuencia base:</label>
+        <input id="freqBase" type="range" min="0" max="10" value="2" step="0.1" style="flex:1" />
+      </div>
+      <div class="row">
+        <label style="min-width:120px">Amplitud máx.:</label>
+        <input id="ampMax" type="range" min="0" max="1.5" value="0.6" step="0.01" style="flex:1" />
+      </div>
+      <div class="row">
+        <label style="min-width:120px">Velocidad:</label>
+        <input id="speed" type="range" min="0" max="3" value="1" step="0.01" style="flex:1" />
+      </div>
+      <div class="row">
+        <label style="min-width:120px">Segmentos:</label>
+        <input id="seg" type="range" min="16" max="256" value="96" step="1" style="flex:1" />
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="row">
+        <label style="min-width:120px">Radio X:</label>
+        <input id="radiusX" type="range" min="0.2" max="4" value="1.4" step="0.01" style="flex:1" />
+      </div>
+      <div class="row">
+        <label style="min-width:120px">Radio Y:</label>
+        <input id="radiusY" type="range" min="0.2" max="4" value="1.0" step="0.01" style="flex:1" />
+      </div>
+      <div class="row">
+        <label style="min-width:120px">Radio Z:</label>
+        <input id="radiusZ" type="range" min="0.2" max="4" value="1.4" step="0.01" style="flex:1" />
+      </div>
     </div>
-  </section>
-</main>
+  </aside>
 
-<script>
-(() => {
-  // --- Parámetros y Configuración ---
-  const paramGrid = {
-    alpha: [0, 0.5, 1, 1.5, 2],
-    beta: [0, 0.05, 0.1, 0.2],
-    kappa: [0, 0.05, 0.1, 0.15],
-    Uth: [0.05, 0.08, 0.12],
-    dr: [0.01, 0.03, 0.05]
-  };
-  const seedsCount = 3;      // cantidad de seeds (variación aleatoria)
-  const stepsPerSim = 500;   // pasos de simulación por corrida
-  const N = 256;             // nodos de la simulación
-  const evaluationInterval = 20; // simulaciones entre evaluaciones
+  <main id="right">
+    <div id="renderer"></div>
+    <div id="status">estado: listo</div>
+  </main>
 
-  // Estado UI
-  const btnStart = document.getElementById('btnStart');
-  const btnStop = document.getElementById('btnStop');
-  const totalSimsSpan = document.getElementById('totalSims');
-  const currentSimSpan = document.getElementById('currentSim');
-  const discAlertsCountSpan = document.getElementById('discAlertsCount');
-  const alertsDiv = document.getElementById('alerts');
-  const clustersPlot = document.getElementById('clustersPlot');
+  <!-- three.js + orbit controls + gltf exporter -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.155.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.155.0/examples/js/exporters/GLTFExporter.js"></script>
 
-  // Canvas y contexto
-  const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width;
-  const H = canvas.height;
+  <script>
+  (() => {
+    const status = document.getElementById('status');
+    const setStatus = (s) => status.textContent = 'estado: ' + s;
 
-  // Variables de simulación
-  let s, U, Uprev, u, uprev, v, r, theta;
-  let isRunning = false;
+    // --- cámara (video + canvas oculto) ---
+    const video = document.getElementById('video');
+    const hidden = document.createElement('canvas');
+    const hctx = hidden.getContext('2d', { willReadFrequently: true });
+    let stream = null;
 
-  // Logs y datos para ML
-  let mlAlertsCount = 0;
-  let discoveryAlertsCount = 0;
-
-  // --- Funciones básicas simulación ---
-  function initArrays(cfg, seed) {
-    s = new Float64Array(N);
-    U = new Float64Array(N);
-    Uprev = new Float64Array(N);
-    u = new Float64Array(N);
-    uprev = new Float64Array(N);
-    v = new Float64Array(N);
-    r = new Float64Array(N);
-    theta = new Float64Array(N);
-    for(let j=0; j<N; j++) {
-      s[j] = j;
-      U[j] = (Math.random()-0.5)*0.02*seed;
-      Uprev[j] = U[j];
-      u[j] = 0;
-      uprev[j] = 0;
-      v[j] = 0;
-      theta[j] = (j/(N-1))*cfg.thetaTot;
-      r[j] = cfg.a*theta[j];
-    }
-  }
-
-  function grad(arr,j){
-    if(j<=0) return arr[1]-arr[0];
-    if(j>=arr.length-1) return arr[arr.length-1]-arr[arr.length-2];
-    return (arr[j+1]-arr[j-1])/2;
-  }
-  function lap(arr,j){
-    if(j<=0) return arr[1]-2*arr[0]+arr[0];
-    if(j>=arr.length-1) return arr[arr.length-1]-2*arr[arr.length-2]+arr[arr.length-1];
-    return arr[j+1]-2*arr[j]+arr[j-1];
-  }
-
-  function step(cfg, dt){
-    const N = cfg.N;
-    const eps = new Float64Array(N);
-    const c = new Float64Array(N);
-    for(let j=0;j<N;j++) {
-      const divu = grad(u,j);
-      eps[j] = 1.0 + cfg.alpha*divu + cfg.beta*U[j]*U[j];
-      c[j] = 1/Math.sqrt(eps[j]);
-    }
-    const newU = new Float64Array(N);
-    for(let j=1;j<N-1;j++) {
-      const lapU = lap(U,j);
-      const dUd = (U[j] - Uprev[j])/dt;
-      newU[j] = 2*U[j] - Uprev[j] + dt*dt*(c[j]*c[j]*lapU - 2*cfg.gamma*dUd) - dt*dt*cfg.kappa*U[j];
-    }
-    newU[0] = 0;
-    newU[N-1] = 0;
-
-    for(let j=1;j<N-1;j++) {
-      if(Math.abs(newU[j]-U[j]) > cfg.Uth) cfg.jumps++;
-    }
-
-    for(let j=0;j<N;j++) {
-      Uprev[j] = U[j];
-      U[j] = newU[j];
-    }
-
-    for(let j=1;j<N-1;j++) {
-      const lapu = lap(u,j);
-      const T = U[j]*U[j];
-      const dtt_u = lapu + T;
-      u[j] += dt*dt*dtt_u - dt*cfg.eta*u[j];
-    }
-  }
-
-  function extractFeatures(log){
-    const Uabs = log.U.map(x => Math.abs(x));
-    const maxEnergy = Math.max(...Uabs);
-    const focalDuration = log.focalDuration;
-    const jumps = log.jumps;
-
-    const sumU = Uabs.reduce((a,b)=>a+b,0);
-    const p = Uabs.map(x=>x/sumU);
-    let entropy = 0;
-    for(let v of p){
-      if(v>0) entropy -= v*Math.log(v);
-    }
-
-    return [maxEnergy, focalDuration, jumps, entropy];
-  }
-
-  function kmeans(data, k, maxIter=50) {
-    const centers = [];
-    for(let i=0;i<k;i++) {
-      centers.push(data[Math.floor(Math.random()*data.length)].slice());
-    }
-
-    let labels = new Array(data.length).fill(0);
-    for(let iter=0;iter<maxIter;iter++) {
-      for(let i=0;i<data.length;i++) {
-        let bestDist = Infinity;
-        let bestC = 0;
-        for(let c=0;c<k;c++) {
-          let dist = 0;
-          for(let d=0;d<data[i].length;d++) {
-            dist += (data[i][d]-centers[c][d])**2;
-          }
-          if(dist<bestDist){
-            bestDist=dist;
-            bestC=c;
-          }
-        }
-        labels[i] = bestC;
-      }
-      const sums = Array(k).fill(null).map(()=>Array(data[0].length).fill(0));
-      const counts = Array(k).fill(0);
-      for(let i=0;i<data.length;i++) {
-        const c = labels[i];
-        counts[c]++;
-        for(let d=0;d<data[0].length;d++) {
-          sums[c][d]+=data[i][d];
-        }
-      }
-      for(let c=0;c<k;c++){
-        if(counts[c]>0) {
-          for(let d=0;d<data[0].length;d++) {
-            centers[c][d] = sums[c][d]/counts[c];
-          }
-        }
+    async function startCam(){
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio:false });
+        video.srcObject = stream;
+        setStatus('cámara iniciada');
+      } catch (e) {
+        console.error(e);
+        setStatus('error al iniciar cámara');
       }
     }
-    return {centers, labels};
-  }
-
-  function detectOutliers(labels) {
-    const counts = {};
-    labels.forEach(l => { counts[l] = (counts[l] || 0) + 1; });
-    const outliers = [];
-    for(let i=0;i<labels.length;i++) {
-      if(counts[labels[i]] < 3) outliers.push(i);
-    }
-    return outliers;
-  }
-
-  // -------- Protocolo avanzado de descubrimiento --------
-
-  class DiscoveryProtocol {
-    constructor() {
-      this.patterns = [];
-      this.minRepetitions = 3;
-      this.similarityThreshold = 0.12;
-      this.distanceNoveltyThreshold = 0.7;
-      this.noveltyScoreThreshold = 0.7;
-      this.globalFeaturesStats = {mean: null, std: null};
+    function stopCam(){
+      if (stream) stream.getTracks().forEach(t=>t.stop());
+      stream = null;
+      setStatus('cámara detenida');
     }
 
-    distance(a,b) {
-      let sum = 0;
-      for(let i=0; i<a.length; i++) sum += (a[i]-b[i])**2;
-      return Math.sqrt(sum);
+    // --- escena three ---
+    const rendererEl = document.getElementById('renderer');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b0b0b);
+    const camera = new THREE.PerspectiveCamera(60, rendererEl.clientWidth/rendererEl.clientHeight, 0.1, 100);
+    camera.position.set(0,0,5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias:true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(rendererEl.clientWidth, rendererEl.clientHeight);
+    rendererEl.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+    scene.add(ambient);
+    const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+    dir.position.set(3,3,5);
+    scene.add(dir);
+
+    // parámetros
+    const params = {
+      seg: 96,
+      baseFreq: 2.0,
+      ampMax: 0.6,
+      speed: 1.0,
+      radiusX: 1.4,
+      radiusY: 1.0,
+      radiusZ: 1.4,
+      wireframe: false,
+      flat: false
+    };
+
+    // geometría viva y capturada
+    let liveMesh, capturedMesh = null;
+    let originalPositions, originalNormals;
+    let imageData = null;
+    let showCaptured = false; // si true, se muestra el modelo capturado (congelado)
+
+    function makeMaterial(){
+      return new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.5,
+        metalness: 0.1,
+        flatShading: params.flat,
+        wireframe: params.wireframe,
+        side: THREE.DoubleSide
+      });
     }
 
-    registerPattern(params, features) {
-      this.patterns.push({params, features});
-    }
-
-    groupSimilarPatterns() {
-      const groups = [];
-      for(const p of this.patterns) {
-        let foundGroup = false;
-        for(const g of groups) {
-          if(this.distance(p.params, g[0].params) < this.similarityThreshold) {
-            g.push(p);
-            foundGroup = true;
-            break;
-          }
-        }
-        if(!foundGroup) groups.push([p]);
+    function buildLiveMesh(){
+      if (liveMesh){
+        scene.remove(liveMesh);
+        liveMesh.geometry.dispose();
+        liveMesh.material.dispose();
       }
-      return groups;
+      const geo = new THREE.SphereGeometry(1, params.seg, params.seg);
+      geo.scale(params.radiusX, params.radiusY, params.radiusZ);
+
+      // guardo copias de posiciones/normales originales
+      originalPositions = geo.attributes.position.array.slice();
+      originalNormals = geo.attributes.normal.array.slice();
+
+      liveMesh = new THREE.Mesh(geo, makeMaterial());
+      scene.add(liveMesh);
     }
 
-    meanStd(arr) {
-      const n = arr.length;
-      const mean = arr.reduce((a,b)=>a+b,0)/n;
-      const variance = arr.reduce((a,b)=>a+(b-mean)**2,0)/n;
-      return [mean, Math.sqrt(variance)];
-    }
-
-    tTest(groupFeatures, globalMean, globalStd) {
-      const n = groupFeatures.length;
-      if(n < 2) return 1;
-      const meanGroup = groupFeatures.reduce((a,b)=>a+b,0)/n;
-      const se = globalStd/Math.sqrt(n);
-      const t = Math.abs(meanGroup - globalMean) / se;
-      return (t>2) ? 0.01 : 1;
-    }
-
-    updateGlobalStats(allFeatures) {
-      const n = allFeatures.length;
-      if(n===0) return;
-      const dims = allFeatures[0].length;
-      const mean = new Array(dims).fill(0);
-      const variance = new Array(dims).fill(0);
-      for(let d=0; d<dims; d++){
-        for(let i=0;i<n;i++) mean[d]+=allFeatures[i][d];
-        mean[d]/=n;
-        for(let i=0;i<n;i++) variance[d]+=(allFeatures[i][d]-mean[d])**2;
-        variance[d]/=n;
-      }
-      const std = variance.map(Math.sqrt);
-      this.globalFeaturesStats.mean = mean;
-      this.globalFeaturesStats.std = std;
-    }
-
-    evaluateNovelty() {
-      if(this.patterns.length < this.minRepetitions) return {alert:false};
-      const groups = this.groupSimilarPatterns();
-      for(const g of groups) {
-        if(g.length < this.minRepetitions) continue;
-
-        // Evaluamos solo la primer feature (maxEnergy) por simplicidad
-        const featuresArr = g.map(p => p.features[0]);
-        const globalMean = this.globalFeaturesStats.mean ? this.globalFeaturesStats.mean[0] : 0;
-        const globalStd = this.globalFeaturesStats.std ? this.globalFeaturesStats.std[0] : 1;
-        const pValue = this.tTest(featuresArr, globalMean, globalStd);
-        if(pValue > 0.05) continue;
-
-        // Distancia mínima a otros grupos (seguridad)
-        let minDist = Infinity;
-        for(const otherGroup of groups) {
-          if(otherGroup === g) continue;
-          const dist = this.distance(g[0].features, otherGroup[0].features);
-          if(dist < minDist) minDist = dist;
+    // util rgb->hsl
+    function rgbToHsl(r,g,b){
+      const max = Math.max(r,g,b), min = Math.min(r,g,b);
+      let h, s, l = (max + min)/2;
+      if (max === min){ h = s = 0; }
+      else {
+        const d = max - min;
+        s = l > 0.5 ? d/(2 - max - min) : d/(max + min);
+        switch (max){
+          case r: h = (g - b)/d + (g < b ? 6 : 0); break;
+          case g: h = (b - r)/d + 2; break;
+          case b: h = (r - g)/d + 4; break;
         }
-        if(minDist < this.distanceNoveltyThreshold) continue;
-
-        const persistNorm = Math.min(1, g.length / 10);
-        const distNorm = Math.min(1, minDist / 2);
-        const noveltyScore = 0.4 * persistNorm + 0.4 * (1-pValue) + 0.2 * distNorm;
-
-        if(noveltyScore > this.noveltyScoreThreshold) {
-          return {alert:true, noveltyScore, group:g};
-        }
+        h /= 6;
       }
-      return {alert:false};
+      return { h, s, l };
     }
-  }
 
-  // -------- Variables globales y setup --------
-  const discoveryProtocol = new DiscoveryProtocol();
-  let simulationData = [];
-  let currentSimulationIndex = 0;
+    // deformación en vivo
+    let t = 0;
+    function updateLiveDeform(dt){
+      if (!liveMesh || showCaptured) return;
+      const geo = liveMesh.geometry;
+      const pos = geo.attributes.position.array;
+      const norm = geo.attributes.normal.array;
 
-  // Genera todas combinaciones de parámetros
-  function generateParamCombinations(grid) {
-    const keys = Object.keys(grid);
-    const combos = [];
+      // preparar lectura de cámara
+      if (video.readyState >= 2 && stream){
+        if (hidden.width !== video.videoWidth || hidden.height !== video.videoHeight){
+          hidden.width = video.videoWidth;
+          hidden.height = video.videoHeight;
+        }
+        hctx.drawImage(video, 0, 0, hidden.width, hidden.height);
+        imageData = hctx.getImageData(0,0,hidden.width, hidden.height).data;
+      } else {
+        imageData = null; // si no hay cámara, no deformamos
+      }
 
-    function backtrack(i, acc) {
-      if(i===keys.length) {
-        combos.push(Object.values(acc));
+      for (let i = 0; i < pos.length; i += 3){
+        const ix = i;
+        const iy = i + 1;
+        const iz = i + 2;
+
+        const ox = originalPositions[ix];
+        const oy = originalPositions[iy];
+        const oz = originalPositions[iz];
+
+        const nx = originalNormals[ix];
+        const ny = originalNormals[iy];
+        const nz = originalNormals[iz];
+
+        // UV aproximado sobre esfera
+        const r = Math.sqrt(ox*ox + oy*oy + oz*oz) || 1e-6;
+        const u = 0.5 + Math.atan2(oz, ox)/(2*Math.PI);
+        const v = 0.5 - Math.asin(oy/r)/Math.PI;
+
+        let hue = 0.0, sat = 0.0, lum = 0.0;
+        if (imageData){
+          const px = Math.min(hidden.width - 1, Math.max(0, Math.floor(u*hidden.width)));
+          const py = Math.min(hidden.height - 1, Math.max(0, Math.floor(v*hidden.height)));
+          const idx = (py*hidden.width + px)*4;
+          const rr = imageData[idx]/255;
+          const gg = imageData[idx+1]/255;
+          const bb = imageData[idx+2]/255;
+          const hsl = rgbToHsl(rr,gg,bb);
+          hue = hsl.h; sat = hsl.s; lum = hsl.l;
+        }
+
+        // mapear color -> parámetros
+        const freqTheta = params.baseFreq + hue*10.0;
+        const freqPhi   = params.baseFreq + sat*10.0;
+        const amp       = 0.05 + lum*params.ampMax; // luminancia controla amplitud
+
+        // ángulos esféricos (sobre la malla escalada)
+        const theta = Math.acos(THREE.MathUtils.clamp(oy / (r || 1), -1, 1)); // 0..PI
+        const phi = Math.atan2(oz, ox); // -PI..PI
+
+        const disp = amp * Math.sin(freqTheta*theta + freqPhi*phi + t);
+
+        pos[ix] = ox + nx * disp;
+        pos[iy] = oy + ny * disp;
+        pos[iz] = oz + nz * disp;
+      }
+
+      geo.attributes.position.needsUpdate = true;
+      geo.computeVertexNormals();
+      t += dt * params.speed;
+    }
+
+    // captura de forma (congela la geometría actual)
+    function captureShape(){
+      if (!liveMesh) return;
+
+      // clonar geometría deformada actual
+      const capturedGeo = liveMesh.geometry.clone();
+      // por seguridad, hacer deep clone de atributos
+      const pos = capturedGeo.attributes.position;
+      capturedGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos.array), 3));
+      capturedGeo.computeVertexNormals();
+
+      if (capturedMesh){
+        scene.remove(capturedMesh);
+        capturedMesh.geometry.dispose();
+        capturedMesh.material.dispose();
+      }
+      capturedMesh = new THREE.Mesh(capturedGeo, makeMaterial());
+      capturedMesh.material.color.set(0x9ad1ff);
+      scene.add(capturedMesh);
+
+      showCaptured = true; // mostrar capturado
+      setStatus('forma capturada (modelo congelado)');
+    }
+
+    function returnToLive(){
+      showCaptured = false;
+      setStatus('vivo (deformación por cámara)');
+    }
+
+    // capturar pantalla del render
+    function screenshot(){
+      const link = document.createElement('a');
+      link.download = 'captura_esfera.png';
+      link.href = renderer.domElement.toDataURL('image/png');
+      link.click();
+    }
+
+    // exportar GLB del modelo capturado
+    function exportGLB(){
+      if (!capturedMesh){
+        setStatus('no hay modelo capturado');
         return;
       }
-      const key = keys[i];
-      for(const val of grid[key]) {
-        acc[key] = val;
-        backtrack(i+1, acc);
+      const exporter = new THREE.GLTFExporter();
+      exporter.parse(capturedMesh, (gltf) => {
+        const blob = new Blob([gltf instanceof ArrayBuffer ? gltf : JSON.stringify(gltf)], { type: 'model/gltf-binary' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'modelo_capturado.glb';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }, { binary: true });
+      setStatus('exportado GLB');
+    }
+
+    // listeners UI
+    document.getElementById('btnStart').addEventListener('click', startCam);
+    document.getElementById('btnStop').addEventListener('click', stopCam);
+    document.getElementById('btnFreeze').addEventListener('click', captureShape);
+    document.getElementById('btnLive').addEventListener('click', returnToLive);
+    document.getElementById('btnShot').addEventListener('click', screenshot);
+    document.getElementById('btnExport').addEventListener('click', exportGLB);
+
+    document.getElementById('chkFlat').addEventListener('input', (e)=>{
+      params.flat = e.target.checked;
+      if (liveMesh){ liveMesh.material.flatShading = params.flat; liveMesh.material.needsUpdate = true; }
+      if (capturedMesh){ capturedMesh.material.flatShading = params.flat; capturedMesh.material.needsUpdate = true; }
+    });
+    document.getElementById('chkWire').addEventListener('input', (e)=>{
+      params.wireframe = e.target.checked;
+      if (liveMesh) liveMesh.material.wireframe = params.wireframe;
+      if (capturedMesh) capturedMesh.material.wireframe = params.wireframe;
+    });
+
+    const segEl = document.getElementById('seg');
+    const baseEl = document.getElementById('freqBase');
+    const ampEl = document.getElementById('ampMax');
+    const spdEl = document.getElementById('speed');
+    const rxEl = document.getElementById('radiusX');
+    const ryEl = document.getElementById('radiusY');
+    const rzEl = document.getElementById('radiusZ');
+
+    segEl.addEventListener('input', ()=>{ params.seg = +segEl.value; buildLiveMesh(); setStatus('segmentos: '+params.seg) });
+    baseEl.addEventListener('input', ()=>{ params.baseFreq = +baseEl.value; });
+    ampEl.addEventListener('input', ()=>{ params.ampMax = +ampEl.value; });
+    spdEl.addEventListener('input', ()=>{ params.speed = +spdEl.value; });
+
+    function rebuildScaled(){
+      if (!liveMesh) return;
+      const geo = new THREE.SphereGeometry(1, params.seg, params.seg);
+      geo.scale(params.radiusX, params.radiusY, params.radiusZ);
+      // volver a setear originales
+      originalPositions = geo.attributes.position.array.slice();
+      originalNormals = geo.attributes.normal.array.slice();
+      liveMesh.geometry.dispose();
+      liveMesh.geometry = geo;
+      setStatus(`radio XYZ: ${params.radiusX.toFixed(2)} ${params.radiusY.toFixed(2)} ${params.radiusZ.toFixed(2)}`);
+    }
+    rxEl.addEventListener('input', ()=>{ params.radiusX = +rxEl.value; rebuildScaled(); });
+    ryEl.addEventListener('input', ()=>{ params.radiusY = +ryEl.value; rebuildScaled(); });
+    rzEl.addEventListener('input', ()=>{ params.radiusZ = +rzEl.value; rebuildScaled(); });
+
+    // init
+    buildLiveMesh();
+    setStatus('listo: inicia la cámara y deforma en vivo; captura para congelar');
+
+    // resize
+    function onResize(){
+      renderer.setSize(rendererEl.clientWidth, rendererEl.clientHeight);
+      camera.aspect = rendererEl.clientWidth/rendererEl.clientHeight;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener('resize', onResize);
+
+    // loop
+    let last = performance.now();
+    function tick(now){
+      requestAnimationFrame(tick);
+      const dt = Math.min(0.05, (now - last)/1000); // clamp dt
+      last = now;
+
+      controls.update();
+
+      if (showCaptured){
+        // mostrar solo capturado
+        if (liveMesh) liveMesh.visible = false;
+        if (capturedMesh) capturedMesh.visible = true;
+      } else {
+        if (liveMesh) liveMesh.visible = true;
+        if (capturedMesh) capturedMesh.visible = !!capturedMesh; // puede coexistir, pero oculto si quieres
+        updateLiveDeform(dt);
       }
+
+      renderer.render(scene, camera);
     }
-    backtrack(0,{});
-    return combos;
-  }
-
-  const allParamCombinations = generateParamCombinations(paramGrid);
-  const totalSims = allParamCombinations.length * seedsCount;
-  totalSimsSpan.textContent = totalSims;
-
-  // Simulación completa con parámetros y seed
-  async function runSimulation(params, seed) {
-    const [alpha, beta, kappa, Uth, dr] = params;
-    const cfg = {
-      N, alpha, beta, kappa, Uth, dr,
-      a: 0.4, thetaTot: 20 * Math.PI,
-      gamma: 0.01, eta: 0.01,
-      jumps: 0
-    };
-    initArrays(cfg, seed);
-    const dt = 0.1;
-    let maxEnergy = 0;
-    let focalDuration = 0;
-
-    for(let t=0; t<stepsPerSim; t++) {
-      step(cfg, dt);
-      // Energia max
-      const maxU = Math.max(...U.map(x => Math.abs(x)));
-      if(maxU > maxEnergy) maxEnergy = maxU;
-    }
-
-    // Simulamos duración focalizada (ejemplo simple)
-    focalDuration = stepsPerSim / 10;
-
-    return {
-      params,
-      seed,
-      U: Array.from(U),
-      maxEnergy,
-      focalDuration,
-      jumps: cfg.jumps,
-      features: []
-    };
-  }
-
-  function logAlert(text) {
-    const d = new Date();
-    alertsDiv.innerHTML += `<div class="alert">[${d.toLocaleTimeString()}] ${text}</div>`;
-    alertsDiv.scrollTop = alertsDiv.scrollHeight;
-    discoveryAlertsCount++;
-    discAlertsCountSpan.textContent = discoveryAlertsCount;
-  }
-
-  function drawSimulation() {
-    ctx.clearRect(0,0,W,H);
-    ctx.beginPath();
-    ctx.strokeStyle = '#66ccee';
-    for(let j=0;j<N;j++) {
-      const x = (j/(N-1)) * W;
-      const y = H/2 - U[j]*200;
-      if(j===0) ctx.moveTo(x,y);
-      else ctx.lineTo(x,y);
-    }
-    ctx.stroke();
-  }
-
-  async function runAllSimulations() {
-    isRunning = true;
-    btnStart.disabled = true;
-    btnStop.disabled = false;
-    simulationData = [];
-    discoveryAlertsCount = 0;
-    currentSimulationIndex = 0;
-    discoveryProtocol.patterns = [];
-    discoveryProtocol.globalFeaturesStats = {mean: null, std: null};
-
-    for(let i=0; i<allParamCombinations.length && isRunning; i++) {
-      for(let seed=1; seed<=seedsCount && isRunning; seed++) {
-        currentSimulationIndex++;
-        currentSimSpan.textContent = currentSimulationIndex;
-
-        const simResult = await runSimulation(allParamCombinations[i], seed);
-        simulationData.push(simResult);
-
-        // Extraer features
-        const features = extractFeatures(simResult);
-        simResult.features = features;
-
-        // Registrar patrón raro si es outlier
-        if(simulationData.length >= 20) {
-          const allFeatures = simulationData.map(s => s.features);
-          const kmres = kmeans(allFeatures, 3);
-          const outliersIdx = detectOutliers(kmres.labels);
-
-          // Registrar patrones outliers
-          for(const idx of outliersIdx) {
-            const s = simulationData[idx];
-            discoveryProtocol.registerPattern(s.params, s.features);
-          }
-
-          // Actualizar stats globales y evaluar descubrimiento
-          discoveryProtocol.updateGlobalStats(allFeatures);
-          const evaluation = discoveryProtocol.evaluateNovelty();
-
-          // Si es descubrimiento, lanzar alerta definitiva
-          if(evaluation.alert) {
-            const score = evaluation.noveltyScore.toFixed(3);
-            logAlert(`¡DESCUBRIMIENTO CIENTÍFICO DETECTADO! Score: ${score} | Parámetros: α=${evaluation.group[0].params[0]}, β=${evaluation.group[0].params[1]}, κ=${evaluation.group[0].params[2]}, Uth=${evaluation.group[0].params[3]}, dr=${evaluation.group[0].params[4]}`);
-          }
-        }
-
-        // Dibujar última simulación
-        for(let j=0;j<N;j++) {
-          U[j] = simResult.U[j];
-        }
-        drawSimulation();
-      }
-    }
-    btnStart.disabled = false;
-    btnStop.disabled = true;
-    isRunning = false;
-  }
-
-  btnStart.onclick = () => {
-    if(isRunning) return;
-    runAllSimulations();
-  };
-  btnStop.onclick = () => {
-    isRunning = false;
-  };
-})();
-</script>
+    tick(last);
+  })();
+  </script>
 </body>
 </html>
